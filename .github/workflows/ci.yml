@@ -1,0 +1,98 @@
+name: VOID RIFT CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Game
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check index.html exists
+        run: |
+          if [ ! -f index.html ]; then
+            echo "ERROR: index.html not found!"
+            exit 1
+          fi
+          echo "index.html found ($(wc -c < index.html) bytes)"
+
+      - name: Validate JavaScript syntax
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('index.html', 'utf-8');
+            const match = html.match(/<script>([\s\S]*)<\/script>/);
+            if (!match) { console.error('ERROR: No <script> tag found'); process.exit(1); }
+            try {
+              new Function(match[1]);
+              console.log('JS syntax OK (' + match[1].split('\n').length + ' lines)');
+            } catch(e) {
+              console.error('JS SYNTAX ERROR:', e.message);
+              process.exit(1);
+            }
+          "
+
+      - name: Validate HTML structure
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('index.html', 'utf-8');
+            const checks = [
+              [/<canvas/, 'canvas element'],
+              [/<meta.*viewport/, 'viewport meta tag'],
+              [/<!DOCTYPE html>/i, 'DOCTYPE declaration'],
+            ];
+            let pass = true;
+            for (const [regex, name] of checks) {
+              if (regex.test(html)) {
+                console.log('PASS: ' + name);
+              } else {
+                console.error('FAIL: missing ' + name);
+                pass = false;
+              }
+            }
+            if (!pass) process.exit(1);
+            console.log('HTML structure OK');
+          "
+
+      - name: Check file size
+        run: |
+          SIZE=$(wc -c < index.html)
+          echo "File size: ${SIZE} bytes"
+          if [ "$SIZE" -gt 5000000 ]; then
+            echo "WARNING: File exceeds 5MB"
+            exit 1
+          fi
+          echo "Size check passed"
+
+  deploy-check:
+    name: Deploy Check
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Wait for Render deploy
+        run: |
+          echo "Commit pushed to main - Render will auto-deploy"
+          echo "Live URL: https://game-pgf8.onrender.com"
+          sleep 10
+
+      - name: Verify site is reachable
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' https://game-pgf8.onrender.com/)
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "WARNING: Site returned non-200 status"
+          else
+            echo "Site is live and reachable"
+          fi
