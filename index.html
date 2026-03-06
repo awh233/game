@@ -1151,8 +1151,10 @@ function drawLevelUp() {
 function drawButton(cx, cy, w, h, text, color) {
     ctx.strokeStyle = color; ctx.lineWidth = 2;
     ctx.strokeRect(cx - w/2, cy - h/2, w, h);
-    ctx.fillStyle = color.replace(')', ',0.1)').replace('rgb', 'rgba');
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = color;
     ctx.fillRect(cx - w/2, cy - h/2, w, h);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = color; ctx.font = 'bold 20px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(text, cx, cy + 7);
