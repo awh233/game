@@ -1052,28 +1052,138 @@
   // DRAWING FUNCTIONS
   // ============================================================================
   function drawButton(ctx, cx, cy, w, h, text, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
-    ctx.strokeStyle = '#ffffff';
+    const x = cx - w / 2;
+    const y = cy - h / 2;
+    const radius = 8;
+
+    // Gradient fill (darker at top, lighter at bottom)
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, adjustBrightness(color, 1.3));
+
+    // Draw rounded rectangle background
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.fill();
+
+    // Inner glow (subtle highlight on top)
+    const innerGrad = ctx.createLinearGradient(x, y, x, y + h * 0.4);
+    innerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+    innerGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = innerGrad;
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y + 1);
+    ctx.lineTo(x + w - radius, y + 1);
+    ctx.quadraticCurveTo(x + w - 1, y + 1, x + w - 1, y + radius);
+    ctx.lineTo(x + w - 1, y + h * 0.4);
+    ctx.quadraticCurveTo(x + w - 1, y + h * 0.4, x, y + h * 0.4);
+    ctx.lineTo(x + 1, y + radius);
+    ctx.quadraticCurveTo(x + 1, y + 1, x + radius, y + 1);
+    ctx.fill();
+
+    // Outer border with glow
+    ctx.strokeStyle = adjustBrightness(color, 0.7);
     ctx.lineWidth = 2;
-    ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.stroke();
+
+    // Shadow glow effect
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = color;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Text with shadow
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
     ctx.fillText(text, cx, cy);
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  }
+
+  function adjustBrightness(color, factor) {
+    const num = parseInt(color.replace("#",""), 16);
+    const r = Math.min(255, Math.floor((num >> 16) * factor));
+    const g = Math.min(255, Math.floor((num >> 8 & 0x00FF) * factor));
+    const b = Math.min(255, Math.floor((num & 0x0000FF) * factor));
+    return "#" + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
   }
 
   function drawStars(ctx) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    for (let i = 0; i < 100; i++) {
-      const seed = Math.sin(i * 12.9898) * 43758.5453;
-      const x = ((seed - Math.floor(seed)) * CANVAS_WIDTH) % CANVAS_WIDTH;
-      const y = ((seed * 78.233 - Math.floor(seed * 78.233)) * CANVAS_HEIGHT) % CANVAS_HEIGHT;
-      const radius = Math.max(0.5, (seed * 0.5) % 1);
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
+    const time = Date.now() * 0.0001;
+
+    // Multiple layers of stars with parallax
+    for (let layer = 0; layer < 3; layer++) {
+      const layerSpeed = 0.3 + layer * 0.2;
+      const layerOpacity = 0.3 + layer * 0.25;
+
+      for (let i = 0; i < 100 + layer * 50; i++) {
+        const seed = Math.sin(i * 12.9898 + layer * 73.156) * 43758.5453;
+        const baseSeed = seed - Math.floor(seed);
+        let x = (baseSeed * CANVAS_WIDTH + time * layerSpeed * 20) % CANVAS_WIDTH;
+        if (x < 0) x += CANVAS_WIDTH;
+
+        const y = ((seed * 78.233 - Math.floor(seed * 78.233)) * CANVAS_HEIGHT) % CANVAS_HEIGHT;
+        let radius = Math.max(0.3, (seed * 0.7) % 1.2);
+
+        // Twinkling effect
+        const twinkle = Math.sin(time * (1 + layer * 0.5) + i * 0.1) * 0.5 + 0.5;
+        const brightness = Math.pow(twinkle, 2);
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${layerOpacity * brightness})`;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glow for brighter stars
+        if (brightness > 0.7) {
+          ctx.fillStyle = `rgba(200, 220, 255, ${layerOpacity * (brightness - 0.7) * 0.5})`;
+          ctx.beginPath();
+          ctx.arc(x, y, radius + 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
   }
 
@@ -1090,99 +1200,432 @@
   function drawPlayer(ctx) {
     const ship = SHIPS[selectedShipIndex];
     const visible = player.invulnTimer <= 0 || Math.floor(player.invulnTimer * 10) % 2 === 0;
-    ctx.fillStyle = visible ? ship.color : 'rgba(0, 0, 0, 0)';
-    ctx.shadowBlur = visible ? 15 : 0;
-    ctx.shadowColor = ship.color;
+
+    if (!visible) return;
+
+    const x = player.x;
+    const y = player.y;
+    const size = player.radius;
+    const time = Date.now() * 0.002;
+
+    // Engine flame effect (behind ship)
+    const flameLength = size * 2.5 + Math.sin(time) * 3;
+    const flame1 = Math.sin(time + 1) * 0.8;
+    const flame2 = Math.sin(time + 2) * 0.8;
+
+    // Inner flame (hot yellow-orange)
+    ctx.fillStyle = 'rgba(255, 200, 50, 0.7)';
     ctx.beginPath();
-    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.moveTo(x - size * 0.6, y + size);
+    ctx.lineTo(x - size * 0.3 + flame1 * 3, y + flameLength);
+    ctx.lineTo(x + size * 0.3 + flame2 * 3, y + flameLength);
+    ctx.lineTo(x + size * 0.6, y + size);
     ctx.fill();
+
+    // Outer flame (more transparent orange-red)
+    ctx.fillStyle = 'rgba(255, 100, 0, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.8, y + size);
+    ctx.lineTo(x - size * 0.3 + flame1 * 5, y + flameLength + 5);
+    ctx.lineTo(x + size * 0.3 + flame2 * 5, y + flameLength + 5);
+    ctx.lineTo(x + size * 0.8, y + size);
+    ctx.fill();
+
+    // Glow trail behind
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = ship.color;
+
+    // Ship body - triangle/arrow pointing up
+    ctx.fillStyle = ship.color;
+    ctx.beginPath();
+    ctx.moveTo(x, y - size * 1.2);  // Nose
+    ctx.lineTo(x + size * 0.9, y + size * 0.8); // Right wing
+    ctx.lineTo(x, y + size * 0.4); // Center indent
+    ctx.lineTo(x - size * 0.9, y + size * 0.8); // Left wing
+    ctx.fill();
+
+    // Inner highlight on ship
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(x, y - size * 0.8);
+    ctx.lineTo(x + size * 0.4, y);
+    ctx.lineTo(x - size * 0.4, y);
+    ctx.fill();
+
     ctx.shadowBlur = 0;
 
-    if (visible) {
-      ctx.strokeStyle = ship.color;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y - 8, 3, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    // Glow circle around ship
+    ctx.strokeStyle = ship.color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
+    // Shield effect
     if (player.hasShield) {
-      ctx.strokeStyle = '#00aaff';
+      const shieldPulse = Math.sin(time * 4) * 0.3 + 0.7;
+      ctx.strokeStyle = `rgba(0, 170, 255, ${shieldPulse * 0.8})`;
       ctx.lineWidth = 2;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 12;
       ctx.shadowColor = '#00aaff';
       ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius + 8, 0, Math.PI * 2);
+      ctx.arc(x, y, player.radius + 12, 0, Math.PI * 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
+
+      // Shield inner ring
+      ctx.strokeStyle = `rgba(100, 200, 255, ${shieldPulse * 0.4})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(x, y, player.radius + 8, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 
   function drawEnemies(ctx) {
+    const time = Date.now() * 0.002;
+
     for (let enemy of enemies) {
-      ctx.fillStyle = enemy.color;
-      ctx.shadowBlur = 10;
+      const isBoss = enemy.hp > 20;
+      const x = enemy.x;
+      const y = enemy.y;
+      const r = enemy.radius;
+
+      // Pulsing glow effect
+      const pulse = Math.sin(time * (isBoss ? 2 : 4)) * 0.3 + 0.7;
+      ctx.shadowBlur = 15 * pulse;
       ctx.shadowColor = enemy.color;
-      ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-      ctx.fill();
+
+      if (isBoss) {
+        // Boss enemy - larger, spiky, rotating
+        const rotation = time * (0.5 + Math.sin(enemy.x * 0.01) * 0.3);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+
+        // Outer spikes
+        ctx.fillStyle = `rgba(255, 100, 0, ${pulse * 0.6})`;
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2;
+          const sx = Math.cos(angle) * r * 1.8;
+          const sy = Math.sin(angle) * r * 1.8;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Main body (diamond shape)
+        ctx.fillStyle = enemy.color;
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 1.5);
+        ctx.lineTo(r * 1.5, 0);
+        ctx.lineTo(0, r * 1.5);
+        ctx.lineTo(-r * 1.5, 0);
+        ctx.fill();
+
+        // Inner glow on boss
+        ctx.fillStyle = `rgba(255, 200, 100, 0.5)`;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      } else {
+        // Regular enemy - hexagon shape
+        ctx.fillStyle = enemy.color;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const hx = x + Math.cos(angle) * r;
+          const hy = y + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Hexagon border
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
       ctx.shadowBlur = 0;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const hpText = Math.ceil(enemy.hp);
-      ctx.fillText(hpText, enemy.x, enemy.y);
+      // HP bar above enemy
+      const barW = r * 2.5;
+      const barH = 4;
+      const barY = y - r - 12;
+
+      // Background bar (dark)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x - barW / 2, barY, barW, barH);
+
+      // Health gradient (red to yellow to green)
+      const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+      const hpBarW = barW * hpPercent;
+
+      let hpColor;
+      if (hpPercent > 0.66) {
+        hpColor = '#00ff00'; // Green
+      } else if (hpPercent > 0.33) {
+        hpColor = '#ffff00'; // Yellow
+      } else {
+        hpColor = '#ff0000'; // Red
+      }
+
+      const hpGrad = ctx.createLinearGradient(x - barW / 2, barY, x - barW / 2 + hpBarW, barY);
+      hpGrad.addColorStop(0, hpColor);
+      hpGrad.addColorStop(1, adjustBrightness(hpColor, 1.3));
+      ctx.fillStyle = hpGrad;
+      ctx.fillRect(x - barW / 2, barY, hpBarW, barH);
+
+      // HP bar border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - barW / 2, barY, barW, barH);
+
+      // HP text below bar (optional, for debugging)
+      if (enemy.hp <= 5 || isBoss) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 8px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(Math.ceil(enemy.hp), x, barY + barH + 2);
+      }
     }
   }
 
   function drawBullets(ctx) {
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#00ff00';
+    const time = Date.now() * 0.002;
+
     for (let b of bullets) {
-      ctx.fillStyle = WEAPONS[player.weapon].color;
+      const weaponColor = WEAPONS[player.weapon].color;
+      const speedY = Math.abs(b.vy) || 5;
+      const size = b.radius;
+
+      // Calculate direction
+      const vx = b.vx || 0;
+      const vy = b.vy || -5;
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      const dirX = vx / (speed || 1);
+      const dirY = vy / (speed || 1);
+
+      // Trailing glow behind bullet
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = weaponColor;
+      for (let trail = 1; trail <= 3; trail++) {
+        const trailX = b.x - dirX * trail * 4;
+        const trailY = b.y - dirY * trail * 4;
+        ctx.beginPath();
+        ctx.arc(trailX, trailY, size * (1 - trail * 0.3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Main bullet - teardrop/oval shape
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      const bulletAngle = Math.atan2(dirY, dirX);
+      ctx.rotate(bulletAngle);
+
+      ctx.fillStyle = weaponColor;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = weaponColor;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, size * 2, size, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Bright core
+      ctx.fillStyle = 'rgba(255, 255, 200, 0.6)';
+      ctx.beginPath();
+      ctx.ellipse(size * 0.8, 0, size * 0.8, size * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
     }
-    ctx.shadowBlur = 0;
 
     if (laserActive && player.weapon === 'laser') {
+      // Pulsing laser beam
+      const laserPulse = Math.sin(time * 6) * 0.4 + 0.6;
+      const laserWidth = 4 + laserPulse * 2;
+
       ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 4;
-      ctx.shadowBlur = 12;
+      ctx.lineWidth = laserWidth;
+      ctx.shadowBlur = 12 + laserPulse * 4;
       ctx.shadowColor = '#00ff00';
       ctx.beginPath();
       ctx.moveTo(player.x, player.y);
       ctx.lineTo(player.x, 0);
       ctx.stroke();
+
+      // Inner bright core
+      ctx.strokeStyle = 'rgba(200, 255, 100, 0.8)';
+      ctx.lineWidth = laserWidth * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(player.x, player.y);
+      ctx.lineTo(player.x, 0);
+      ctx.stroke();
+
       ctx.shadowBlur = 0;
     }
   }
 
   function drawEnemyBullets(ctx) {
-    ctx.fillStyle = '#ff6600';
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = '#ff6600';
+    const time = Date.now() * 0.002;
+
     for (let b of enemyBullets) {
+      const x = b.x;
+      const y = b.y;
+      const r = b.radius;
+
+      // Direction of travel
+      const vx = b.vx || 0;
+      const vy = b.vy || 5;
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      const dirX = vx / (speed || 1);
+      const dirY = vy / (speed || 1);
+
+      // Trailing particles
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = 'rgba(255, 100, 0, 0.6)';
+      for (let trail = 1; trail <= 2; trail++) {
+        const trailX = x - dirX * trail * 3;
+        const trailY = y - dirY * trail * 3;
+        ctx.beginPath();
+        ctx.arc(trailX, trailY, r * (1 - trail * 0.4), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Menacing shape - spiraling diamond
+      ctx.save();
+      ctx.translate(x, y);
+      const bulletRotation = (time * (speed + 2)) % (Math.PI * 2);
+      ctx.rotate(bulletRotation);
+
+      ctx.fillStyle = '#ff6600';
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#ff0000';
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+      ctx.moveTo(0, -r * 1.2);
+      ctx.lineTo(r * 1.2, 0);
+      ctx.lineTo(0, r * 1.2);
+      ctx.lineTo(-r * 1.2, 0);
       ctx.fill();
+
+      // Spiky protrusions
+      ctx.fillStyle = '#ff3300';
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2;
+        const sx = Math.cos(angle) * r * 1.5;
+        const sy = Math.sin(angle) * r * 1.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Inner bright core
+      ctx.fillStyle = 'rgba(255, 200, 100, 0.7)';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.restore();
     }
-    ctx.shadowBlur = 0;
   }
 
   function drawPickups(ctx) {
+    const time = Date.now() * 0.002;
+
     for (let p of pickups) {
       const spec = PICKUP_TYPES[p.type];
       const bob = Math.sin(p.bobPhase) * 3;
-      ctx.fillStyle = spec.color;
-      ctx.shadowBlur = 10;
+      const r = p.radius;
+
+      // Pulsing glow
+      const pulse = Math.sin(time * 3) * 0.3 + 0.7;
+      ctx.shadowBlur = 12 * pulse;
       ctx.shadowColor = spec.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y + bob, p.radius, 0, Math.PI * 2);
-      ctx.fill();
+
+      ctx.save();
+      ctx.translate(p.x, p.y + bob);
+
+      // Rotation based on type
+      const rotationSpeed = p.type === 'gold' ? 3 : (p.type === 'health' ? 2 : 2.5);
+      const rotation = time * rotationSpeed;
+      ctx.rotate(rotation);
+
+      ctx.fillStyle = spec.color;
+
+      if (p.type === 'gold') {
+        // Diamond shape for gold
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 1.2);
+        ctx.lineTo(r * 1.2, 0);
+        ctx.lineTo(0, r * 1.2);
+        ctx.lineTo(-r * 1.2, 0);
+        ctx.fill();
+
+        // Inner shine
+        ctx.fillStyle = 'rgba(255, 255, 150, 0.6)';
+        ctx.beginPath();
+        ctx.arc(0, -r * 0.3, r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === 'health') {
+        // Cross/plus shape for health
+        ctx.fillRect(-r * 0.3, -r * 1.1, r * 0.6, r * 2.2);
+        ctx.fillRect(-r * 1.1, -r * 0.3, r * 2.2, r * 0.6);
+
+        // Center circle
+        ctx.fillStyle = 'rgba(255, 255, 200, 0.7)';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Star shape for power-ups
+        const points = 5;
+        const outerRad = r;
+        const innerRad = r * 0.5;
+        ctx.beginPath();
+        for (let i = 0; i < points * 2; i++) {
+          const angle = (i / (points * 2)) * Math.PI * 2;
+          const rad = i % 2 === 0 ? outerRad : innerRad;
+          const x = Math.cos(angle) * rad;
+          const y = Math.sin(angle) * rad;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Inner core
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      // Particle sparkle effect around pickup
+      const sparkleCount = 4;
+      for (let i = 0; i < sparkleCount; i++) {
+        const sparkleAngle = (time * 2 + (i / sparkleCount) * Math.PI * 2) % (Math.PI * 2);
+        const sparkleRadius = r * 2 + Math.sin(time * 2 + i) * 3;
+        const sx = p.x + Math.cos(sparkleAngle) * sparkleRadius;
+        const sy = p.y + bob + Math.sin(sparkleAngle) * sparkleRadius;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.6})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       ctx.shadowBlur = 0;
     }
   }
@@ -1203,56 +1646,183 @@
   }
 
   function drawHUD(ctx) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px Arial';
+    const time = Date.now() * 0.002;
+    const panelPadding = 8;
+    const panelH = 85;
+
+    // Semi-transparent dark panel at top
+    ctx.fillStyle = 'rgba(10, 10, 20, 0.8)';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, panelH);
+
+    // Panel border
+    ctx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, CANVAS_WIDTH, panelH);
+
+    // LEFT SIDE - Wave, Score, Gold, Level
+    ctx.fillStyle = '#00ccff';
+    ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
-    ctx.fillText(`Wave: ${wave}`, 10, 10);
-    ctx.fillText(`Score: ${score}`, 10, 25);
-    ctx.fillText(`Gold: ${gold}`, 10, 40);
-    ctx.fillText(`HP: ${player.hp}/${player.maxHp}`, 10, 55);
-    ctx.fillText(`Level: ${level}`, 10, 70);
+    ctx.fillText(`WAVE ${wave}`, 10, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px Arial';
+    ctx.fillText(`Score: ${score}`, 10, 20);
+    ctx.fillText(`Gold: ${gold}`, 10, 32);
+    ctx.fillText(`Lvl: ${level}`, 10, 44);
 
-    ctx.fillText(`Combo: ${combo}`, CANVAS_WIDTH - 120, 10);
-    ctx.fillText(`Weapon: ${WEAPONS[player.weapon].name}`, CANVAS_WIDTH - 120, 25);
+    // Health bar (red/green gradient)
+    const healthBarW = 80;
+    const healthBarH = 10;
+    const healthBarX = 10;
+    const healthBarY = 56;
 
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(healthBarX, healthBarY, healthBarW, healthBarH);
+
+    const healthPercent = Math.max(0, player.hp / player.maxHp);
+    const healthBarFill = healthBarW * healthPercent;
+
+    const hpGrad = ctx.createLinearGradient(healthBarX, healthBarY, healthBarX + healthBarFill, healthBarY);
+    hpGrad.addColorStop(0, '#00ff00');
+    hpGrad.addColorStop(0.5, '#ffff00');
+    hpGrad.addColorStop(1, '#ff0000');
+    ctx.fillStyle = hpGrad;
+    ctx.fillRect(healthBarX, healthBarY, healthBarFill, healthBarH);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(healthBarX, healthBarY, healthBarW, healthBarH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 8px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}`, healthBarX + healthBarW / 2, healthBarY + healthBarH / 2);
+
+    // RIGHT SIDE - Combo, Weapon, XP
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = combo > 0 ? '#ffff00' : '#888888';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText(`COMBO x${combo}`, CANVAS_WIDTH - 10, 8);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px Arial';
+    ctx.fillText(`${WEAPONS[player.weapon].name}`, CANVAS_WIDTH - 10, 20);
+
+    // XP bar with glow
     const xpBarW = 100;
-    const xpBarH = 8;
-    ctx.strokeStyle = '#ffffff';
-    ctx.strokeRect(CANVAS_WIDTH - 110, 45, xpBarW, xpBarH);
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(CANVAS_WIDTH - 110, 45, (xp / xpNeeded) * xpBarW, xpBarH);
+    const xpBarH = 10;
+    const xpBarX = CANVAS_WIDTH - 110;
+    const xpBarY = 35;
 
-    ctx.fillText(`XP: ${xp}/${xpNeeded}`, CANVAS_WIDTH - 120, 60);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(xpBarX, xpBarY, xpBarW, xpBarH);
 
+    const xpPercent = Math.max(0, xp / xpNeeded);
+    const xpBarFill = xpBarW * xpPercent;
+
+    const xpGrad = ctx.createLinearGradient(xpBarX, xpBarY, xpBarX + xpBarFill, xpBarY);
+    xpGrad.addColorStop(0, '#0088ff');
+    xpGrad.addColorStop(1, '#00ff88');
+    ctx.fillStyle = xpGrad;
+    ctx.fillRect(xpBarX, xpBarY, xpBarFill, xpBarH);
+
+    // XP bar glow
+    if (xpPercent > 0.8) {
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#00ff88';
+      ctx.strokeStyle = 'rgba(0, 255, 136, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(xpBarX, xpBarY, xpBarFill, xpBarH);
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(xpBarX, xpBarY, xpBarW, xpBarH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 8px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('XP', CANVAS_WIDTH - 60, xpBarY + xpBarH / 2);
+
+    // Combo fire effect when high combo
     if (combo >= 10 && combo % 10 === 0) {
-      ctx.font = 'bold 28px Arial';
-      ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+      ctx.font = 'bold 32px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 16;
       ctx.shadowColor = '#ffff00';
-      ctx.fillText(`${combo}x COMBO!`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+
+      // Glitch effect on combo text
+      const glitch = Math.sin(time * 10) * 2;
+      ctx.fillStyle = 'rgba(255, 255, 0, 0.95)';
+      ctx.fillText(`${combo}x COMBO!`, CANVAS_WIDTH / 2 + glitch, CANVAS_HEIGHT / 2);
+
+      ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+      ctx.fillText(`${combo}x COMBO!`, CANVAS_WIDTH / 2 - glitch, CANVAS_HEIGHT / 2);
+
       ctx.shadowBlur = 0;
     }
   }
 
   function drawBiomeTransition(ctx) {
     if (biomeTransitionTimer > 0) {
-      const alpha = biomeTransitionTimer / BIOME_TRANSITION_FRAMES;
+      const progress = 1 - (biomeTransitionTimer / BIOME_TRANSITION_FRAMES);
       const biome = getCurrentBiome();
-      ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
-      ctx.font = 'bold 20px Arial';
+      // Cinematic black bars wipe from top and bottom
+      const barHeight = CANVAS_HEIGHT * 0.25 * progress;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, barHeight);
+      ctx.fillRect(0, CANVAS_HEIGHT - barHeight, CANVAS_WIDTH, barHeight);
+
+      // Center text with per-letter glow cycling
+      const textY = CANVAS_HEIGHT / 2;
+      const text = `ENTERING: ${biome.name}`;
+      const baseFontSize = 24;
+      const glowCycle = (Date.now() * 0.003) % 1;
+
+      ctx.font = `bold ${baseFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = '#ffffff';
-      ctx.fillText(`ENTERING: ${biome.name}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+
+      // Draw text with per-letter color cycling
+      const charWidth = ctx.measureText('M').width;
+      let xOffset = CANVAS_WIDTH / 2 - (text.length * charWidth) / 4;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const hue = ((glowCycle + i * 0.1) % 1) * 360;
+        const brightness = Math.sin(glowCycle * Math.PI * 2 + i * 0.5) * 0.3 + 0.7;
+
+        // Cycle through color hues
+        let color;
+        if (glowCycle < 0.33) {
+          color = `rgba(0, 255, 255, ${brightness})`;
+        } else if (glowCycle < 0.66) {
+          color = `rgba(0, 255, 100, ${brightness})`;
+        } else {
+          color = `rgba(100, 100, 255, ${brightness})`;
+        }
+
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 8 + brightness * 8;
+        ctx.shadowColor = color;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.fillText(char, xOffset + i * charWidth / 2, textY);
+      }
       ctx.shadowBlur = 0;
+
+      // Semi-transparent vignette overlay
+      const vignetteAlpha = progress * 0.3;
+      ctx.fillStyle = `rgba(0, 0, 0, ${vignetteAlpha})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
   }
 
@@ -1271,58 +1841,152 @@
   }
 
   function drawMenuBackground(ctx) {
+    const time = Date.now() / 1000;
+
+    // Rich gradient base
     const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
     gradient.addColorStop(0, '#0a0a2a');
-    gradient.addColorStop(1, '#1a0a3a');
+    gradient.addColorStop(0.3, '#1a0a4a');
+    gradient.addColorStop(0.7, '#2a0a3a');
+    gradient.addColorStop(1, '#0a0a1a');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    const time = Date.now() / 1000;
-    for (let i = 0; i < 150; i++) {
-      const angle = (time * 0.1 + i * 0.1) % (Math.PI * 2);
-      const radius = 150 + i * 2;
-      const x = CANVAS_WIDTH / 2 + Math.cos(angle) * radius;
-      const y = CANVAS_HEIGHT / 2 + Math.sin(angle) * radius;
-      ctx.fillStyle = `rgba(100, 150, 255, ${0.1 - i * 0.0005})`;
+    // Animated nebula clouds using radial gradients
+    for (let nebula = 0; nebula < 3; nebula++) {
+      const cloudX = CANVAS_WIDTH / 2 + Math.sin(time * 0.2 + nebula) * 50;
+      const cloudY = CANVAS_HEIGHT / 2 + Math.cos(time * 0.15 + nebula * 1.5) * 80;
+      const scale = 100 + nebula * 40;
+
+      const nebGrad = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, scale);
+      const colors = [
+        ['rgba(100, 50, 150, 0.2)', 'rgba(100, 100, 255, 0.15)'],
+        ['rgba(150, 50, 100, 0.15)', 'rgba(200, 100, 150, 0.1)'],
+        ['rgba(50, 100, 150, 0.1)', 'rgba(100, 150, 200, 0.08)']
+      ];
+      nebGrad.addColorStop(0, colors[nebula][0]);
+      nebGrad.addColorStop(1, colors[nebula][1]);
+      ctx.fillStyle = nebGrad;
       ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.arc(cloudX, cloudY, scale, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Drifting particles
+    for (let i = 0; i < 50; i++) {
+      const seed = Math.sin(i * 12.9898) * 43758.5453;
+      const x = ((seed - Math.floor(seed)) * CANVAS_WIDTH + time * 5) % CANVAS_WIDTH;
+      const y = ((seed * 78.233 - Math.floor(seed * 78.233)) * CANVAS_HEIGHT + time * 10) % CANVAS_HEIGHT;
+      const size = Math.max(0.5, (seed * 0.8) % 1.5);
+      const opacity = 0.2 + (seed * 0.3) % 0.3;
+
+      ctx.fillStyle = `rgba(100, 150, 255, ${opacity})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Rotating star field
+    for (let i = 0; i < 200; i++) {
+      const angle = (time * 0.05 + i * 0.1) % (Math.PI * 2);
+      const radiusBase = 80 + i * 1.5;
+      const radius = radiusBase + Math.sin(time * 0.1 + i * 0.05) * 20;
+      const x = CANVAS_WIDTH / 2 + Math.cos(angle) * radius;
+      const y = CANVAS_HEIGHT / 2 + Math.sin(angle) * radius;
+
+      const brightness = Math.sin(time * 0.2 + i * 0.05) * 0.5 + 0.5;
+      const opacity = Math.max(0.02, brightness * (0.15 - i * 0.00035));
+      ctx.fillStyle = `rgba(100, 150, 255, ${opacity})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw animated stars layer
     drawStars(ctx);
   }
 
   function drawMenu(ctx) {
     drawMenuBackground(ctx);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 32px Arial';
+    const time = Date.now() * 0.003;
+    const title = 'VOID RIFT';
+
+    // Animated title with per-letter glow
+    ctx.font = 'bold 40px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#00ff00';
-    ctx.fillText('VOID RIFT', CANVAS_WIDTH / 2, 20);
+    const charWidth = ctx.measureText('M').width;
+    let xOffset = CANVAS_WIDTH / 2 - (title.length * charWidth) / 2;
+
+    for (let i = 0; i < title.length; i++) {
+      const char = title[i];
+      const letterGlow = Math.sin(time + i * 0.5) * 0.5 + 0.5;
+      const yBob = Math.sin(time * 1.5 + i * 0.3) * 3;
+
+      // Color cycling per letter
+      let color;
+      const huePhase = (time + i * 0.15) % 1;
+      if (huePhase < 0.33) {
+        color = `rgba(0, 255, 100, ${letterGlow * 0.8 + 0.2})`;
+      } else if (huePhase < 0.66) {
+        color = `rgba(0, 150, 255, ${letterGlow * 0.8 + 0.2})`;
+      } else {
+        color = `rgba(150, 0, 255, ${letterGlow * 0.8 + 0.2})`;
+      }
+
+      ctx.fillStyle = color;
+      ctx.shadowBlur = 8 + letterGlow * 12;
+      ctx.shadowColor = color;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.fillText(char, xOffset + i * charWidth, 15 + yBob);
+    }
     ctx.shadowBlur = 0;
 
-    ctx.font = '12px Arial';
-    ctx.shadowBlur = 2;
-    ctx.shadowColor = '#ffffff';
-    ctx.fillText(`High Score: ${highScore}`, CANVAS_WIDTH / 2, 65);
-    ctx.fillText(`Streak: Day ${getPlayStreak()}`, CANVAS_WIDTH / 2, 82);
-    ctx.fillText(`Prestige: ${prestigeLevel}x`, CANVAS_WIDTH / 2, 99);
+    // Subtitle "ULTRA DELUXE"
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = '#ffff00';
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = '#ffff00';
+    ctx.fillText('ULTRA DELUXE', CANVAS_WIDTH / 2, 60);
     ctx.shadowBlur = 0;
 
-    const btnY1 = 150;
-    const btnY2 = 200;
-    const btnY3 = 250;
-    const btnY4 = 300;
-    const btnY5 = 350;
-    const btnY6 = 400;
+    // Stats with icons and styling
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#00ff88';
+    ctx.shadowBlur = 3;
+    ctx.shadowColor = '#00ff88';
+    ctx.fillText(`★ High Score: ${highScore}`, CANVAS_WIDTH / 2, 85);
+
+    ctx.fillStyle = '#ffaa00';
+    ctx.shadowColor = '#ffaa00';
+    ctx.fillText(`◆ Streak: Day ${getPlayStreak()}`, CANVAS_WIDTH / 2, 102);
+
+    ctx.fillStyle = '#ff00ff';
+    ctx.shadowColor = '#ff00ff';
+    ctx.fillText(`✦ Prestige: ${prestigeLevel}x`, CANVAS_WIDTH / 2, 119);
+    ctx.shadowBlur = 0;
+
+    const btnY1 = 160;
+    const btnY2 = 210;
+    const btnY3 = 260;
+    const btnY4 = 310;
+    const btnY5 = 360;
 
     drawButton(ctx, CANVAS_WIDTH / 2, btnY1, 130, 35, 'PLAY', '#00ff00');
     drawButton(ctx, CANVAS_WIDTH / 2, btnY2, 130, 35, 'DAILY', '#ffaa00');
     drawButton(ctx, CANVAS_WIDTH / 2, btnY3, 130, 35, 'SHIPS', '#0088ff');
     drawButton(ctx, CANVAS_WIDTH / 2, btnY4, 130, 35, 'ACHIEVEMENTS', '#ff00ff');
     drawButton(ctx, CANVAS_WIDTH / 2, btnY5, 130, 35, 'SHOP', '#ffff00');
+
+    // Version text at bottom
+    ctx.font = '9px Arial';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('v1.0', CANVAS_WIDTH - 10, CANVAS_HEIGHT - 5);
   }
 
   function drawShipsScreen(ctx) {
@@ -1451,30 +2115,86 @@
   }
 
   function drawDead(ctx) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    const time = Date.now() * 0.003;
+
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    ctx.fillStyle = '#ff0000';
-    ctx.font = 'bold 40px Arial';
+    // Screen shake/glitch residual effect
+    const glitch = Math.sin(time * 8) * 2;
+    const vertGlitch = Math.sin(time * 5 + 1.5) * 1.5;
+
+    // "GAME OVER" with glitch effect
+    ctx.font = 'bold 48px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.shadowBlur = 8;
+
+    // Red glitch layer
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
+    ctx.shadowBlur = 6;
     ctx.shadowColor = '#ff0000';
-    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 40);
+    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 + glitch, 35 + vertGlitch);
+
+    // Cyan glitch layer
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.shadowColor = '#00ffff';
+    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 - glitch, 35 - vertGlitch);
+
+    // Main text
+    ctx.fillStyle = '#ff3333';
+    ctx.shadowColor = '#ff0000';
+    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 35);
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px Arial';
-    ctx.fillText(`Score: ${score}`, CANVAS_WIDTH / 2, 110);
-    ctx.fillText(`Wave: ${wave}`, CANVAS_WIDTH / 2, 130);
-    ctx.fillText(`Gold: ${gold}`, CANVAS_WIDTH / 2, 150);
-    ctx.fillText(`Max Combo: ${maxCombo}`, CANVAS_WIDTH / 2, 170);
-    ctx.fillText(`Level: ${level}`, CANVAS_WIDTH / 2, 190);
+    // Stats in styled boxes
+    const statY = 120;
+    const statLineHeight = 20;
+    const stats = [
+      { label: 'Score', value: score, color: '#ffff00' },
+      { label: 'Wave', value: wave, color: '#00ff88' },
+      { label: 'Gold', value: gold, color: '#ffaa00' },
+      { label: 'Max Combo', value: maxCombo, color: '#ff00ff' },
+      { label: 'Level', value: level, color: '#0088ff' }
+    ];
 
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+
+    for (let i = 0; i < stats.length; i++) {
+      const stat = stats[i];
+      const y = statY + i * statLineHeight;
+
+      // Stat box background
+      ctx.fillStyle = 'rgba(30, 30, 50, 0.8)';
+      ctx.fillRect(30, y - 8, CANVAS_WIDTH - 60, 16);
+
+      // Stat box border (colored)
+      ctx.strokeStyle = stat.color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(30, y - 8, CANVAS_WIDTH - 60, 16);
+
+      // Label
+      ctx.fillStyle = stat.color;
+      ctx.textAlign = 'left';
+      ctx.fillText(stat.label + ':', 40, y);
+
+      // Value
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(stat.value), CANVAS_WIDTH - 40, y);
+    }
+
+    // NEW HIGH SCORE animation
     if (score > highScore) {
-      ctx.fillStyle = '#ffff00';
-      ctx.font = 'bold 16px Arial';
-      ctx.fillText('NEW HIGH SCORE!', CANVAS_WIDTH / 2, 230);
+      const pulse = Math.sin(time * 5) * 0.5 + 0.5;
+      ctx.font = 'bold 18px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(255, 255, 0, ${pulse * 0.8 + 0.2})`;
+      ctx.shadowBlur = 8 + pulse * 8;
+      ctx.shadowColor = '#ffff00';
+      ctx.fillText('★ NEW HIGH SCORE! ★', CANVAS_WIDTH / 2, 285);
+      ctx.shadowBlur = 0;
     }
 
     drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 120, 120, 35, 'MENU', '#00ff00');
