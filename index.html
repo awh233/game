@@ -1187,6 +1187,7 @@ window.onerror = function(msg, url, line, col, err) {
     }
 
     // Subtle nebula wisps with low opacity
+    try {
     ctx.globalAlpha = 0.05;
     for (let i = 0; i < 7; i++) {
       const seed = Math.sin(i * 23.456) * 43758.5453;
@@ -1202,8 +1203,10 @@ window.onerror = function(msg, url, line, col, err) {
       ctx.fillRect(nx - 40, ny - 40, 80, 80);
     }
     ctx.globalAlpha = 1;
+    } catch(e) { ctx.globalAlpha = 1; }
 
     // Space dust particles
+    try {
     ctx.globalAlpha = 0.15;
     for (let i = 0; i < 20; i++) {
       const seed = Math.sin(i * 34.567) * 43758.5453;
@@ -1211,10 +1214,12 @@ window.onerror = function(msg, url, line, col, err) {
       const dy = ((Math.sin(i * 56.789 + seed) * 0.5 + 0.5) * CANVAS_HEIGHT + Date.now() * 0.01 * (i * 0.01)) % CANVAS_HEIGHT;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.beginPath();
-      ctx.arc(dx, dy, 1 + (seed * 0.5), 0, Math.PI * 2);
+      const dustFrac = seed - Math.floor(seed);
+      ctx.arc(dx, dy, 1 + dustFrac * 2, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    } catch(e) { ctx.globalAlpha = 1; }
   }
 
   function drawPlayer() {
