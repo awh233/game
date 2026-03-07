@@ -1192,7 +1192,8 @@ window.onerror = function(msg, url, line, col, err) {
       const seed = Math.sin(i * 23.456) * 43758.5453;
       const nx = (seed - Math.floor(seed)) * CANVAS_WIDTH;
       const ny = (Math.sin(i * 45.789) * 0.5 + 0.5) * CANVAS_HEIGHT;
-      const rad = ctx.createRadialGradient(nx, ny, 0, nx, ny, 30 + (seed * 0.5) * 10);
+      const seedFrac = seed - Math.floor(seed);
+      const rad = ctx.createRadialGradient(nx, ny, 0, nx, ny, 30 + seedFrac * 50);
       const hueObj = biome.nebulaHue || { min: 250, max: 290 };
       const hue = typeof hueObj === 'number' ? hueObj : (hueObj.min + hueObj.max) / 2;
       rad.addColorStop(0, `hsl(${hue}, 70%, 50%)`);
