@@ -639,8 +639,8 @@
   }
 
   function nextWave() {
-    wave++;
     const prevBiome = getCurrentBiome();
+    wave++;
     const newBiome = getCurrentBiome();
     if (prevBiome.id !== newBiome.id) {
       biomeTransitionTimer = BIOME_TRANSITION_FRAMES;
@@ -760,7 +760,7 @@
 
     // ========== DASH ==========
     player.dashTimer -= dt;
-    if (keys['shift'] && player.dashTimer <= 0 && !activeDailyMod?.mod.noDash) {
+    if (keyState['shift'] && player.dashTimer <= 0 && !activeDailyMod?.mod.noDash) {
       player.dashTimer = 1.0;
       dashesUsed++;
       const dashDist = 60 * player.dashLength;
@@ -792,6 +792,14 @@
         const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
         const speed = 200;
         spawnBullet(enemy.x, enemy.y, Math.cos(angle) * speed, Math.sin(angle) * speed, enemy.bulletDamage, 300, true);
+      }
+
+      // Player-enemy collision (contact damage)
+      const pdx = player.x - enemy.x;
+      const pdy = player.y - enemy.y;
+      const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
+      if (pDist < player.radius + enemy.radius) {
+        playerTakeDamage(1);
       }
 
       if (enemy.y > CANVAS_HEIGHT + 50) {
@@ -1288,7 +1296,7 @@
     const time = Date.now() * 0.002;
 
     for (let enemy of enemies) {
-      const isBoss = enemy.hp > 20;
+      const isBoss = enemy.type === 'boss';
       const x = enemy.x;
       const y = enemy.y;
       const r = enemy.radius;
@@ -2203,7 +2211,7 @@
 
   function handleMenuClick(x, y) {
     if (screen === 'main') {
-      const btnY1 = 150, btnY2 = 200, btnY3 = 250, btnY4 = 300, btnY5 = 350;
+      const btnY1 = 160, btnY2 = 210, btnY3 = 260, btnY4 = 310, btnY5 = 360;
       const btnW = 130, btnH = 35;
 
       if (Math.abs(x - CANVAS_WIDTH / 2) < btnW / 2 && Math.abs(y - btnY1) < btnH / 2) {
@@ -2334,9 +2342,36 @@
     if (e.key === '1') switchWeapon('blaster');
     if (e.key === '2') switchWeapon('laser');
     if (e.key === '3') switchWeapon('missiles');
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (gameState === 'menu' && screen === 'main') {
+        startGame();
+      } else if (gameState === 'dead') {
+        startGame();
+      }
+    }
+    if (e.key === 'Escape') {
+      if (gameState === 'play') {
+        gameState = 'menu';
+        screen = 'main';
+      }
+    }
   });
   window.addEventListener('keyup', (e) => {
     keyState[e.key.toLowerCase()] = false;
+  });
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    if (gameState === 'menu') {
+      handleMenuClick(x, y);
+    } else if (gameState === 'dead') {
+      handleDeadClick(x, y);
+    }
   });
 
   let touchStartX = 0;
