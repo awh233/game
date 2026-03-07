@@ -27,7 +27,7 @@
       height: 100vh;
       max-width: 420px;
       max-height: 750px;
-      image-rendering: pixelated;
+      image-rendering: auto;
     }
   </style>
 </head>
@@ -384,6 +384,7 @@ window.onerror = function(msg, url, line, col, err) {
     player.shield = 0;
     player.color = ship.color;
     player.speed = 200;
+    player.invulnTimer = 0;
   }
 
   // ============================================================================
@@ -674,7 +675,8 @@ window.onerror = function(msg, url, line, col, err) {
       damage,
       color: color || '#ff0000',
       radius: 4,
-      trail: []
+      trail: [],
+      age: 0
     });
   }
 
@@ -1118,7 +1120,7 @@ window.onerror = function(msg, url, line, col, err) {
     const path = rrPath(cx - w / 2, cy - h / 2, w, h, 8);
 
     // Dark gradient fill (glass effect)
-    const grad = ctx.createLinearGradient(cy - h / 2, cy - h / 2, cy + h / 2, cy + h / 2);
+    const grad = ctx.createLinearGradient(cx - w / 2, cy - h / 2, cx - w / 2, cy + h / 2);
     grad.addColorStop(0, 'rgba(20, 25, 40, 0.9)');
     grad.addColorStop(1, 'rgba(10, 12, 25, 0.9)');
     ctx.fillStyle = grad;
@@ -1685,9 +1687,9 @@ window.onerror = function(msg, url, line, col, err) {
         ctx.fill();
       } else if (shape === 'star') {
         ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-          const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
-          const radius = i % 2 === 0 ? pickup.radius : pickup.radius * 0.5;
+        for (let i = 0; i < 10; i++) {
+          const angle = (i * Math.PI / 5) - Math.PI / 2;
+          const radius = i % 2 === 0 ? pickup.radius : pickup.radius * 0.4;
           const x = Math.cos(angle) * radius;
           const y = Math.sin(angle) * radius;
           if (i === 0) ctx.moveTo(x, y);
@@ -1829,7 +1831,7 @@ window.onerror = function(msg, url, line, col, err) {
 
     // Wave indicator with biome color
     const biome = getCurrentBiome();
-    ctx.fillStyle = biome.colors.accent || '#00ccff';
+    ctx.fillStyle = '#00ccff';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'right';
     ctx.fillText(`WAVE ${wave}`, CANVAS_WIDTH - 10, 40);
@@ -1889,6 +1891,29 @@ window.onerror = function(msg, url, line, col, err) {
       ctx.font = 'bold 12px Arial';
       ctx.textAlign = 'center';
       ctx.fillText(achievementToast.text, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 12);
+    }
+
+    // Virtual joystick overlay (touch controls)
+    if (joystickVisible && touchActive) {
+      // Outer ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(touchStartX, touchStartY, 50, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner thumb
+      const dx = touchCurrentX - touchStartX;
+      const dy = touchCurrentY - touchStartY;
+      const dist = Math.min(Math.hypot(dx, dy), 50);
+      const angle = Math.atan2(dy, dx);
+      const thumbX = touchStartX + Math.cos(angle) * dist;
+      const thumbY = touchStartY + Math.sin(angle) * dist;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(thumbX, thumbY, 15, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // Screen pulse for high combo
@@ -2151,7 +2176,7 @@ window.onerror = function(msg, url, line, col, err) {
     ctx.fillStyle = '#aaaaaa';
     ctx.font = '11px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Arrow keys to select, Space to confirm', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
+    ctx.fillText('Tap to select or use Arrow keys + Space', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
   }
 
   // ============================================================================
@@ -2169,6 +2194,19 @@ window.onerror = function(msg, url, line, col, err) {
     if (keys['ArrowRight'] || keys['d']) player.vx = moveSpeed * 2;
     if (keys['ArrowUp'] || keys['w']) player.vy = -moveSpeed * 2;
     if (keys['ArrowDown'] || keys['s']) player.vy = moveSpeed * 2;
+
+    // Touch/virtual joystick input
+    if (touchActive) {
+      const dx = touchCurrentX - touchStartX;
+      const dy = touchCurrentY - touchStartY;
+      const dist = Math.hypot(dx, dy);
+      const deadZone = 10;
+      if (dist > deadZone) {
+        const normalized = Math.min(dist, 60) / 60;
+        player.vx = (dx / dist) * moveSpeed * 2 * normalized;
+        player.vy = (dy / dist) * moveSpeed * 2 * normalized;
+      }
+    }
 
     player.x = Math.max(player.radius, Math.min(CANVAS_WIDTH - player.radius, player.x + player.vx));
     player.y = Math.max(player.radius, Math.min(CANVAS_HEIGHT - player.radius, player.y + player.vy));
@@ -2198,6 +2236,7 @@ window.onerror = function(msg, url, line, col, err) {
 
     player.dashCooldown = Math.max(0, player.dashCooldown - dt);
     player.shield = Math.max(0, player.shield - dt * 0.5);
+    if (player.invulnTimer > 0) player.invulnTimer -= dt;
 
     if (runUpgrades.includes('shieldgen') && player.shield <= 0) {
       player.shield = 100;
@@ -2340,13 +2379,15 @@ window.onerror = function(msg, url, line, col, err) {
       const bullet = enemyBullets[i];
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
+      bullet.age = (bullet.age || 0) + dt;
 
       const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
-      if (dist < player.radius + bullet.radius) {
+      if (dist < player.radius + bullet.radius && player.invulnTimer <= 0) {
         if (player.shield > 0) {
           player.shield -= bullet.damage * 30;
         } else {
           player.hp -= bullet.damage;
+          player.invulnTimer = 1.5; // 1.5 seconds of invulnerability
         }
         enemyBullets.splice(i, 1);
         triggerFlash('#ff0000', 5);
@@ -2604,143 +2645,167 @@ window.onerror = function(msg, url, line, col, err) {
     keys[e.key] = false;
   });
 
-  canvas.addEventListener('click', (e) => {
-    if (gameState !== 'menu') return;
+  // ============================================================================
+  // TOUCH CONTROLS FOR MOBILE GAMEPLAY
+  // ============================================================================
+  let touchActive = false;
+  let touchStartX = 0, touchStartY = 0;
+  let touchCurrentX = 0, touchCurrentY = 0;
+  let joystickVisible = false;
 
+  function startNewGame(dailyMod) {
+    gameState = 'play';
+    wave = 1;
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    enemiesKilled = 0;
+    itemsCollected = 0;
+    timeSurvived = 0;
+    goldEarned = 0;
+    dashesUsed = 0;
+    runUpgrades = [];
+    playerBullets = [];
+    enemyBullets = [];
+    pickups = [];
+    particles = [];
+    enemies = [];
+
+    resetPlayer();
+    activeDailyMod = dailyMod;
+    recordPlayToday();
+
+    spawnWave(1);
+    initAudio();
+    startProceduralMusic();
+  }
+
+  function handleClick(x, y) {
+    initAudio();
+
+    if (gameState === 'menu') {
+      if (screen === 'main') {
+        if (Math.abs(y - 160) < 20) {
+          startNewGame(null);
+        } else if (Math.abs(y - 210) < 20) {
+          screen = 'ships';
+          playUISound('click');
+        } else if (Math.abs(y - 260) < 20) {
+          screen = 'achievements';
+          playUISound('click');
+        } else if (Math.abs(y - 310) < 20) {
+          screen = 'daily';
+          playUISound('click');
+        }
+      } else if (screen === 'ships') {
+        for (let i = 0; i < SHIPS.length; i++) {
+          if (Math.abs(y - (160 + i * 50)) < 25) {
+            if (SHIPS[i].unlocked) {
+              selectedShipIndex = i;
+              playUISound('click');
+            } else if (gold >= SHIPS[i].cost) {
+              gold -= SHIPS[i].cost;
+              SHIPS[i].unlocked = true;
+              selectedShipIndex = i;
+              savePersistentData();
+              playUISound('click');
+            }
+          }
+        }
+        if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
+          screen = 'main';
+          playUISound('click');
+        }
+      } else if (screen === 'achievements') {
+        if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
+          screen = 'main';
+          playUISound('click');
+        }
+      } else if (screen === 'daily') {
+        if (Math.abs(y - 310) < 20) {
+          startNewGame(dailyChallenge);
+        } else if (Math.abs(y - 380) < 20) {
+          screen = 'main';
+          playUISound('click');
+        }
+      }
+    } else if (gameState === 'dead') {
+      if (Math.abs(y - 410) < 20) {
+        // CONTINUE → restart game
+        startNewGame(null);
+        playUISound('click');
+      } else if (Math.abs(y - 470) < 20) {
+        // MENU
+        gameState = 'menu';
+        screen = 'main';
+        playUISound('click');
+      }
+    } else if (gameState === 'upgrade') {
+      // Click on upgrade cards
+      if (upgradeSelection && upgradeSelection.upgrades.length > 0) {
+        let yPos = 140;
+        for (let i = 0; i < upgradeSelection.upgrades.length; i++) {
+          if (y >= yPos - 20 && y <= yPos + 30) {
+            selectedUpgradeIndex = i;
+            const upgrade = upgradeSelection.upgrades[i];
+            applyUpgrade(upgrade.id);
+            spawnWave(wave);
+            gameState = 'play';
+            playUISound('click');
+            return;
+          }
+          yPos += 70;
+        }
+      }
+    }
+  }
+
+  canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
     const y = (e.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
-
-    if (screen === 'main') {
-      if (Math.abs(y - 160) < 20) {
-        gameState = 'play';
-        wave = 1;
-        score = 0;
-        combo = 0;
-        maxCombo = 0;
-        enemiesKilled = 0;
-        itemsCollected = 0;
-        timeSurvived = 0;
-        goldEarned = 0;
-        dashesUsed = 0;
-        runUpgrades = [];
-        playerBullets = [];
-        enemyBullets = [];
-        pickups = [];
-        particles = [];
-        enemies = [];
-
-        resetPlayer();
-        activeDailyMod = null;
-        recordPlayToday();
-
-        spawnWave(1);
-        startProceduralMusic();
-      } else if (Math.abs(y - 210) < 20) {
-        screen = 'ships';
-      } else if (Math.abs(y - 260) < 20) {
-        screen = 'achievements';
-      } else if (Math.abs(y - 310) < 20) {
-        screen = 'daily';
-      }
-    } else if (screen === 'ships') {
-      for (let i = 0; i < SHIPS.length; i++) {
-        if (Math.abs(y - (160 + i * 50)) < 25) {
-          if (SHIPS[i].unlocked) {
-            selectedShipIndex = i;
-            playUISound('click');
-          } else if (gold >= SHIPS[i].cost) {
-            gold -= SHIPS[i].cost;
-            SHIPS[i].unlocked = true;
-            selectedShipIndex = i;
-            savePersistentData();
-            playUISound('click');
-          }
-        }
-      }
-      if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
-        screen = 'main';
-        playUISound('click');
-      }
-    } else if (screen === 'achievements') {
-      if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
-        screen = 'main';
-        playUISound('click');
-      }
-    } else if (screen === 'daily') {
-      if (Math.abs(y - 310) < 20) {
-        gameState = 'play';
-        wave = 1;
-        score = 0;
-        combo = 0;
-        maxCombo = 0;
-        enemiesKilled = 0;
-        itemsCollected = 0;
-        timeSurvived = 0;
-        goldEarned = 0;
-        dashesUsed = 0;
-        runUpgrades = [];
-        playerBullets = [];
-        enemyBullets = [];
-        pickups = [];
-        particles = [];
-        enemies = [];
-
-        resetPlayer();
-        activeDailyMod = dailyChallenge;
-        recordPlayToday();
-
-        spawnWave(1);
-        startProceduralMusic();
-      } else if (Math.abs(y - 380) < 20) {
-        screen = 'main';
-        playUISound('click');
-      }
-    }
+    handleClick(x, y);
   }, { passive: false });
 
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (gameState !== 'menu') return;
-
     const rect = canvas.getBoundingClientRect();
     const touch = e.touches[0];
     const x = (touch.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
     const y = (touch.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
 
-    if (screen === 'main') {
-      if (Math.abs(y - 160) < 20) {
-        gameState = 'play';
-        wave = 1;
-        score = 0;
-        combo = 0;
-        maxCombo = 0;
-        enemiesKilled = 0;
-        itemsCollected = 0;
-        timeSurvived = 0;
-        goldEarned = 0;
-        dashesUsed = 0;
-        runUpgrades = [];
-        playerBullets = [];
-        enemyBullets = [];
-        pickups = [];
-        particles = [];
-        enemies = [];
-
-        resetPlayer();
-        activeDailyMod = null;
-        recordPlayToday();
-
-        spawnWave(1);
-        startProceduralMusic();
-      } else if (Math.abs(y - 210) < 20) {
-        screen = 'ships';
-      } else if (Math.abs(y - 260) < 20) {
-        screen = 'achievements';
-      } else if (Math.abs(y - 310) < 20) {
-        screen = 'daily';
-      }
+    if (gameState === 'play') {
+      // Start virtual joystick
+      touchActive = true;
+      touchStartX = x;
+      touchStartY = y;
+      touchCurrentX = x;
+      touchCurrentY = y;
+      joystickVisible = true;
+    } else {
+      handleClick(x, y);
     }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!touchActive || gameState !== 'play') return;
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    touchCurrentX = (touch.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
+    touchCurrentY = (touch.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    touchActive = false;
+    joystickVisible = false;
+  }, { passive: false });
+
+  canvas.addEventListener('touchcancel', (e) => {
+    touchActive = false;
+    joystickVisible = false;
   }, { passive: false });
 
   // ============================================================================
@@ -2820,11 +2885,11 @@ window.onerror = function(msg, url, line, col, err) {
     requestAnimationFrame(loop);
   }
 
-  loop();
-
   // Initialize
   loadPersistentData();
   initAudio();
+
+  loop();
 })();
 </script>
 
