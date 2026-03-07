@@ -1196,95 +1196,63 @@
   // ============================================================================
   // DRAWING FUNCTIONS
   // ============================================================================
+  function rrPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   function drawButton(ctx, cx, cy, w, h, text, color) {
-    const x = cx - w / 2;
-    const y = cy - h / 2;
-    const radius = 8;
+    const x = cx - w / 2, y = cy - h / 2, r = 6;
 
-    // Gradient fill (darker at top, lighter at bottom)
-    const grad = ctx.createLinearGradient(x, y, x, y + h);
-    grad.addColorStop(0, color);
-    grad.addColorStop(1, adjustBrightness(color, 1.3));
-
-    // Draw rounded rectangle background
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + w - radius, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-    ctx.lineTo(x + w, y + h - radius);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-    ctx.lineTo(x + radius, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
+    // Dark fill with very subtle color tint
+    const bg = ctx.createLinearGradient(x, y, x, y + h);
+    bg.addColorStop(0, 'rgba(30, 35, 50, 0.95)');
+    bg.addColorStop(1, 'rgba(15, 18, 30, 0.95)');
+    rrPath(ctx, x, y, w, h, r);
+    ctx.fillStyle = bg;
     ctx.fill();
 
-    // Inner glow (subtle highlight on top)
-    const innerGrad = ctx.createLinearGradient(x, y, x, y + h * 0.4);
-    innerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
-    innerGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = innerGrad;
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y + 1);
-    ctx.lineTo(x + w - radius, y + 1);
-    ctx.quadraticCurveTo(x + w - 1, y + 1, x + w - 1, y + radius);
-    ctx.lineTo(x + w - 1, y + h * 0.4);
-    ctx.quadraticCurveTo(x + w - 1, y + h * 0.4, x, y + h * 0.4);
-    ctx.lineTo(x + 1, y + radius);
-    ctx.quadraticCurveTo(x + 1, y + 1, x + radius, y + 1);
+    // Subtle top highlight
+    const hi = ctx.createLinearGradient(x, y, x, y + h * 0.35);
+    hi.addColorStop(0, 'rgba(255,255,255,0.08)');
+    hi.addColorStop(1, 'rgba(255,255,255,0)');
+    rrPath(ctx, x + 1, y + 1, w - 2, h * 0.35, r);
+    ctx.fillStyle = hi;
     ctx.fill();
 
-    // Outer border with glow
-    ctx.strokeStyle = adjustBrightness(color, 0.7);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + w - radius, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-    ctx.lineTo(x + w, y + h - radius);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-    ctx.lineTo(x + radius, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.stroke();
-
-    // Shadow glow effect
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = color;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 2;
+    // Accent border (colored but muted)
+    rrPath(ctx, x, y, w, h, r);
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + w - radius, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-    ctx.lineTo(x + w, y + h - radius);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-    ctx.lineTo(x + radius, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.6;
     ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = 1;
 
-    // Text with shadow
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px Arial';
+    // Very subtle outer glow
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = color;
+    rrPath(ctx, x, y, w, h, r);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+
+    // Text
+    ctx.fillStyle = color;
+    ctx.font = 'bold 13px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
     ctx.fillText(text, cx, cy);
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
   }
 
   function adjustBrightness(color, factor) {
@@ -1988,67 +1956,40 @@
   function drawMenuBackground(ctx) {
     const time = Date.now() / 1000;
 
-    // Rich gradient base
+    // Clean dark gradient
     const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    gradient.addColorStop(0, '#0a0a2a');
-    gradient.addColorStop(0.3, '#1a0a4a');
-    gradient.addColorStop(0.7, '#2a0a3a');
-    gradient.addColorStop(1, '#0a0a1a');
+    gradient.addColorStop(0, '#050510');
+    gradient.addColorStop(0.5, '#0a0a20');
+    gradient.addColorStop(1, '#050508');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Animated nebula clouds using radial gradients
-    for (let nebula = 0; nebula < 3; nebula++) {
-      const cloudX = CANVAS_WIDTH / 2 + Math.sin(time * 0.2 + nebula) * 50;
-      const cloudY = CANVAS_HEIGHT / 2 + Math.cos(time * 0.15 + nebula * 1.5) * 80;
-      const scale = 100 + nebula * 40;
+    // Subtle nebula glow (very faint, not blobs)
+    const neb = ctx.createRadialGradient(CANVAS_WIDTH * 0.3, CANVAS_HEIGHT * 0.3, 0, CANVAS_WIDTH * 0.3, CANVAS_HEIGHT * 0.3, 250);
+    neb.addColorStop(0, 'rgba(20, 40, 80, 0.15)');
+    neb.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = neb;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      const nebGrad = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, scale);
-      const colors = [
-        ['rgba(100, 50, 150, 0.2)', 'rgba(100, 100, 255, 0.15)'],
-        ['rgba(150, 50, 100, 0.15)', 'rgba(200, 100, 150, 0.1)'],
-        ['rgba(50, 100, 150, 0.1)', 'rgba(100, 150, 200, 0.08)']
-      ];
-      nebGrad.addColorStop(0, colors[nebula][0]);
-      nebGrad.addColorStop(1, colors[nebula][1]);
-      ctx.fillStyle = nebGrad;
-      ctx.beginPath();
-      ctx.arc(cloudX, cloudY, scale, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    const neb2 = ctx.createRadialGradient(CANVAS_WIDTH * 0.7, CANVAS_HEIGHT * 0.6, 0, CANVAS_WIDTH * 0.7, CANVAS_HEIGHT * 0.6, 200);
+    neb2.addColorStop(0, 'rgba(40, 15, 50, 0.12)');
+    neb2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = neb2;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Drifting particles
-    for (let i = 0; i < 50; i++) {
-      const seed = Math.sin(i * 12.9898) * 43758.5453;
-      const x = ((seed - Math.floor(seed)) * CANVAS_WIDTH + time * 5) % CANVAS_WIDTH;
-      const y = ((seed * 78.233 - Math.floor(seed * 78.233)) * CANVAS_HEIGHT + time * 10) % CANVAS_HEIGHT;
-      const size = Math.max(0.5, (seed * 0.8) % 1.5);
-      const opacity = 0.2 + (seed * 0.3) % 0.3;
-
-      ctx.fillStyle = `rgba(100, 150, 255, ${opacity})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Rotating star field
-    for (let i = 0; i < 200; i++) {
-      const angle = (time * 0.05 + i * 0.1) % (Math.PI * 2);
-      const radiusBase = 80 + i * 1.5;
-      const radius = radiusBase + Math.sin(time * 0.1 + i * 0.05) * 20;
-      const x = CANVAS_WIDTH / 2 + Math.cos(angle) * radius;
-      const y = CANVAS_HEIGHT / 2 + Math.sin(angle) * radius;
-
-      const brightness = Math.sin(time * 0.2 + i * 0.05) * 0.5 + 0.5;
-      const opacity = Math.max(0.02, brightness * (0.15 - i * 0.00035));
-      ctx.fillStyle = `rgba(100, 150, 255, ${opacity})`;
-      ctx.beginPath();
-      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Draw animated stars layer
+    // Stars
     drawStars(ctx);
+
+    // Slow drifting particles (dust motes)
+    for (let i = 0; i < 30; i++) {
+      const seed = Math.sin(i * 12.9898) * 43758.5453;
+      const x = ((seed - Math.floor(seed)) * CANVAS_WIDTH + time * 3) % CANVAS_WIDTH;
+      const y = ((seed * 78.233 - Math.floor(seed * 78.233)) * CANVAS_HEIGHT + time * 5) % CANVAS_HEIGHT;
+      ctx.fillStyle = `rgba(100, 150, 200, ${0.08 + (seed * 0.1) % 0.1})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   function drawMenu(ctx) {
@@ -2057,62 +1998,52 @@
     const time = Date.now() * 0.003;
     const title = 'VOID RIFT';
 
-    // Animated title with per-letter glow
-    ctx.font = 'bold 40px Arial';
+    // Clean white title with gentle cyan glow pulse
+    ctx.font = 'bold 42px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const charWidth = ctx.measureText('M').width;
-    let xOffset = CANVAS_WIDTH / 2 - (title.length * charWidth) / 2;
+    ctx.fillStyle = '#ffffff';
 
-    for (let i = 0; i < title.length; i++) {
-      const char = title[i];
-      const letterGlow = Math.sin(time + i * 0.5) * 0.5 + 0.5;
-      const yBob = Math.sin(time * 1.5 + i * 0.3) * 3;
-
-      // Color cycling per letter
-      let color;
-      const huePhase = (time + i * 0.15) % 1;
-      if (huePhase < 0.33) {
-        color = `rgba(0, 255, 100, ${letterGlow * 0.8 + 0.2})`;
-      } else if (huePhase < 0.66) {
-        color = `rgba(0, 150, 255, ${letterGlow * 0.8 + 0.2})`;
-      } else {
-        color = `rgba(150, 0, 255, ${letterGlow * 0.8 + 0.2})`;
-      }
-
-      ctx.fillStyle = color;
-      ctx.shadowBlur = 8 + letterGlow * 12;
-      ctx.shadowColor = color;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-      ctx.fillText(char, xOffset + i * charWidth, 15 + yBob);
-    }
+    // Gentle glow pulse (shadowBlur oscillates 10-20)
+    const glowIntensity = Math.sin(time * 1.5) * 5 + 15;
+    ctx.shadowBlur = glowIntensity;
+    ctx.shadowColor = '#00ccff';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillText(title, CANVAS_WIDTH / 2, 15);
     ctx.shadowBlur = 0;
 
-    // Subtitle "ULTRA DELUXE"
-    ctx.font = 'bold 12px Arial';
-    ctx.fillStyle = '#ffff00';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#ffff00';
-    ctx.fillText('ULTRA DELUXE', CANVAS_WIDTH / 2, 60);
-    ctx.shadowBlur = 0;
-
-    // Stats with icons and styling
-    ctx.font = 'bold 10px Arial';
+    // Stats in muted gray-white tones
+    ctx.font = '10px Arial';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#00ff88';
-    ctx.shadowBlur = 3;
-    ctx.shadowColor = '#00ff88';
-    ctx.fillText(`★ High Score: ${highScore}`, CANVAS_WIDTH / 2, 85);
+    const statY = 85;
+    const statLineHeight = 18;
 
-    ctx.fillStyle = '#ffaa00';
-    ctx.shadowColor = '#ffaa00';
-    ctx.fillText(`◆ Streak: Day ${getPlayStreak()}`, CANVAS_WIDTH / 2, 102);
+    // High Score
+    ctx.fillStyle = '#999999';
+    ctx.fillText('High Score', CANVAS_WIDTH / 2, statY);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText(String(highScore), CANVAS_WIDTH / 2, statY + 10);
 
-    ctx.fillStyle = '#ff00ff';
-    ctx.shadowColor = '#ff00ff';
-    ctx.fillText(`✦ Prestige: ${prestigeLevel}x`, CANVAS_WIDTH / 2, 119);
-    ctx.shadowBlur = 0;
+    // Streak
+    ctx.fillStyle = '#999999';
+    ctx.fillText('Streak', CANVAS_WIDTH / 2, statY + statLineHeight);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText(`Day ${getPlayStreak()}`, CANVAS_WIDTH / 2, statY + statLineHeight + 10);
+
+    // Prestige
+    ctx.fillStyle = '#999999';
+    ctx.fillText('Prestige', CANVAS_WIDTH / 2, statY + statLineHeight * 2);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText(`${prestigeLevel}x`, CANVAS_WIDTH / 2, statY + statLineHeight * 2 + 10);
+
+    // Subtle horizontal separator
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(50, 145);
+    ctx.lineTo(CANVAS_WIDTH - 50, 145);
+    ctx.stroke();
 
     const btnY1 = 160;
     const btnY2 = 210;
@@ -2120,11 +2051,11 @@
     const btnY4 = 310;
     const btnY5 = 360;
 
-    drawButton(ctx, CANVAS_WIDTH / 2, btnY1, 130, 35, 'PLAY', '#00ff00');
-    drawButton(ctx, CANVAS_WIDTH / 2, btnY2, 130, 35, 'DAILY', '#ffaa00');
-    drawButton(ctx, CANVAS_WIDTH / 2, btnY3, 130, 35, 'SHIPS', '#0088ff');
-    drawButton(ctx, CANVAS_WIDTH / 2, btnY4, 130, 35, 'ACHIEVEMENTS', '#ff00ff');
-    drawButton(ctx, CANVAS_WIDTH / 2, btnY5, 130, 35, 'SHOP', '#ffff00');
+    drawButton(ctx, CANVAS_WIDTH / 2, btnY1, 130, 35, 'PLAY', '#00ccff');
+    drawButton(ctx, CANVAS_WIDTH / 2, btnY2, 130, 35, 'DAILY', '#aa88ff');
+    drawButton(ctx, CANVAS_WIDTH / 2, btnY3, 130, 35, 'SHIPS', '#4488ff');
+    drawButton(ctx, CANVAS_WIDTH / 2, btnY4, 130, 35, 'ACHIEVEMENTS', '#88aacc');
+    drawButton(ctx, CANVAS_WIDTH / 2, btnY5, 130, 35, 'SHOP', '#ccaa44');
 
     // Version text at bottom
     ctx.font = '9px Arial';
@@ -2137,10 +2068,14 @@
   function drawShipsScreen(ctx) {
     drawMenuBackground(ctx);
 
+    // Title with subtle glow
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#00ccff';
     ctx.fillText('SELECT SHIP', CANVAS_WIDTH / 2, 15);
+    ctx.shadowBlur = 0;
 
     const shipW = 100;
     const shipH = 80;
@@ -2151,112 +2086,194 @@
         const ship = SHIPS[idx];
         const sx = 50 + col * 185;
         const sy = 80 + row * 135;
+        const r = 8;
+        const x = sx - shipW / 2;
+        const y = sy - shipH / 2;
 
-        ctx.fillStyle = '#333333';
-        ctx.fillRect(sx - shipW / 2, sy - shipH / 2, shipW, shipH);
-        ctx.strokeStyle = ship.unlocked ? '#00ff00' : '#ff0000';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(sx - shipW / 2, sy - shipH / 2, shipW, shipH);
+        // Dark rounded rectangle card with subtle gradient
+        const cardGradient = ctx.createLinearGradient(x, y, x, y + shipH);
+        cardGradient.addColorStop(0, '#0a0a1a');
+        cardGradient.addColorStop(1, '#151525');
+        rrPath(ctx, x, y, shipW, shipH, r);
+        ctx.fillStyle = cardGradient;
+        ctx.fill();
 
+        // Selected ship: thin cyan border glow
         if (selectedShipIndex === idx) {
-          ctx.strokeStyle = '#ffff00';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(sx - shipW / 2 - 3, sy - shipH / 2 - 3, shipW + 6, shipH + 6);
+          ctx.strokeStyle = '#00ccff';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.8;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#00ccff';
+          rrPath(ctx, x, y, shipW, shipH, r);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
         }
 
-        ctx.fillStyle = ship.color;
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = ship.color;
+        // Unlocked/Locked indicator dot
+        const dotX = sx + shipW / 2 - 8;
+        const dotY = sy - shipH / 2 + 8;
         ctx.beginPath();
-        ctx.arc(sx, sy - 15, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+        if (ship.unlocked) {
+          ctx.fillStyle = '#448844';
+          ctx.fill();
+        } else {
+          ctx.fillStyle = '#884444';
+          ctx.fill();
+        }
 
-        ctx.fillStyle = '#ffffff';
+        // Ship representation: stylized triangle/arrow in ship color
+        ctx.fillStyle = ship.color;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 20);  // top point
+        ctx.lineTo(sx - 6, sy - 10);  // bottom left
+        ctx.lineTo(sx + 6, sy - 10);  // bottom right
+        ctx.closePath();
+        ctx.fill();
+
+        // Ship name
+        ctx.fillStyle = '#cccccc';
         ctx.font = 'bold 11px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText(ship.name, sx, sy + 5);
+
+        // Cost or owned status
         ctx.font = '9px Arial';
         if (ship.unlocked) {
+          ctx.fillStyle = '#448844';
           ctx.fillText('OWNED', sx, sy + 18);
           if (selectedShipIndex === idx) {
+            ctx.fillStyle = '#00ccff';
             ctx.fillText('SELECTED', sx, sy + 28);
           }
         } else {
+          ctx.fillStyle = '#ccaa44';
           ctx.fillText(`${ship.cost}G`, sx, sy + 18);
           if (gold >= ship.cost) {
-            ctx.fillStyle = '#00ff00';
+            ctx.fillStyle = '#448844';
             ctx.fillText('BUY', sx, sy + 28);
           } else {
-            ctx.fillStyle = '#ff0000';
+            ctx.fillStyle = '#884444';
             ctx.fillText('LOCKED', sx, sy + 28);
           }
         }
       }
     }
 
-    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#ff6600');
+    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#cc6644');
   }
 
   function drawAchievementsScreen(ctx) {
     drawMenuBackground(ctx);
 
+    // Title with subtle glow
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#00ccff';
     ctx.fillText('ACHIEVEMENTS', CANVAS_WIDTH / 2, 8);
+    ctx.shadowBlur = 0;
 
     const achW = 95;
     const achH = 60;
     const cols = 2;
+    const r = 6;
     for (let i = 0; i < ACHIEVEMENTS.length; i++) {
       const ach = ACHIEVEMENTS[i];
       const row = Math.floor(i / cols);
       const col = i % cols;
       const ax = 30 + col * 180;
       const ay = 55 + row * 80;
+      const x = ax - achW / 2;
+      const y = ay - achH / 2;
 
-      ctx.fillStyle = ach.unlocked ? '#006600' : '#330000';
-      ctx.fillRect(ax - achW / 2, ay - achH / 2, achW, achH);
-      ctx.strokeStyle = ach.unlocked ? '#00ff00' : '#ff0000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(ax - achW / 2, ay - achH / 2, achW, achH);
+      // Dark rounded rectangle card
+      if (ach.unlocked) {
+        // Unlocked: subtle golden border glow with dark green-tinted fill
+        const cardGradient = ctx.createLinearGradient(x, y, x, y + achH);
+        cardGradient.addColorStop(0, '#1a1a10');
+        cardGradient.addColorStop(1, '#0f0f0a');
+        rrPath(ctx, x, y, achW, achH, r);
+        ctx.fillStyle = cardGradient;
+        ctx.fill();
 
-      ctx.fillStyle = '#ffffff';
+        // Golden border glow
+        ctx.strokeStyle = '#ccaa44';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.5;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ccaa44';
+        rrPath(ctx, x, y, achW, achH, r);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+      } else {
+        // Locked: dim border with very dark fill
+        rrPath(ctx, x, y, achW, achH, r);
+        ctx.fillStyle = 'rgba(20, 20, 30, 0.8)';
+        ctx.fill();
+
+        ctx.strokeStyle = '#333333';
+        ctx.lineWidth = 1;
+        rrPath(ctx, x, y, achW, achH, r);
+        ctx.stroke();
+      }
+
+      // Achievement name
+      ctx.fillStyle = '#cccccc';
       ctx.font = 'bold 8px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(ach.name, ax, ay - 21);
+
+      // Description
       ctx.font = '7px Arial';
+      ctx.fillStyle = '#999999';
       ctx.fillText(ach.desc, ax, ay - 10);
-      ctx.fillStyle = ach.unlocked ? '#ffff00' : '#666666';
+
+      // Reward in gold
+      ctx.fillStyle = '#ccaa44';
       ctx.fillText(`+${ach.reward}G`, ax, ay + 4);
     }
 
-    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#ff6600');
+    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#cc6644');
   }
 
   function drawDailyScreen(ctx) {
     drawMenuBackground(ctx);
 
+    // Title with purple glow
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#aa88ff';
     ctx.fillText('DAILY CHALLENGE', CANVAS_WIDTH / 2, 15);
+    ctx.shadowBlur = 0;
 
+    // Challenge name in muted gold
     ctx.font = 'bold 18px Arial';
-    ctx.fillStyle = '#ffff00';
+    ctx.fillStyle = '#ccaa44';
     ctx.fillText(dailyChallenge.name, CANVAS_WIDTH / 2, 70);
+
+    // Description in gray-white
     ctx.font = '14px Arial';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#cccccc';
     ctx.fillText(dailyChallenge.desc, CANVAS_WIDTH / 2, 100);
 
+    // Score in clean layout
     ctx.font = '12px Arial';
-    ctx.fillText(`Today's High Score: ${dailyHighScore}`, CANVAS_WIDTH / 2, 150);
+    ctx.fillStyle = '#999999';
+    ctx.fillText(`Today's High Score: `, CANVAS_WIDTH / 2, 150);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText(String(dailyHighScore), CANVAS_WIDTH / 2, 165);
 
-    drawButton(ctx, CANVAS_WIDTH / 2, 250, 140, 35, 'START DAILY', '#ffaa00');
-    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#ff6600');
+    drawButton(ctx, CANVAS_WIDTH / 2, 250, 140, 35, 'START DAILY', '#aa88ff');
+    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 50, 100, 30, 'BACK', '#cc6644');
   }
 
   function drawDead(ctx) {
@@ -2266,84 +2283,89 @@
     ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Screen shake/glitch residual effect
-    const glitch = Math.sin(time * 8) * 2;
-    const vertGlitch = Math.sin(time * 5 + 1.5) * 1.5;
+    // Very subtle glitch effect (toned down)
+    const glitch = Math.sin(time * 8) * 1;
+    const vertGlitch = Math.sin(time * 5 + 1.5) * 0.75;
 
-    // "GAME OVER" with glitch effect
+    // "GAME OVER" with subtle toned-down glitch
     ctx.font = 'bold 48px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
-    // Red glitch layer
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = '#ff0000';
+    // Very faint red glitch layer
+    ctx.fillStyle = 'rgba(255, 100, 100, 0.15)';
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = 'rgba(255, 100, 100, 0.3)';
     ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 + glitch, 35 + vertGlitch);
 
-    // Cyan glitch layer
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-    ctx.shadowColor = '#00ffff';
+    // Very faint cyan glitch layer
+    ctx.fillStyle = 'rgba(100, 200, 255, 0.15)';
+    ctx.shadowColor = 'rgba(100, 200, 255, 0.3)';
     ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 - glitch, 35 - vertGlitch);
 
-    // Main text
-    ctx.fillStyle = '#ff3333';
-    ctx.shadowColor = '#ff0000';
+    // Main text in white/gray
+    ctx.fillStyle = '#e0e0e0';
+    ctx.shadowColor = 'rgba(200, 200, 200, 0.5)';
     ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 35);
     ctx.shadowBlur = 0;
 
-    // Stats in styled boxes
+    // Stats in clean dark rounded boxes
     const statY = 120;
-    const statLineHeight = 20;
+    const statLineHeight = 22;
+    const statBoxHeight = 18;
+    const statBoxWidth = CANVAS_WIDTH - 60;
+    const r = 4;
     const stats = [
-      { label: 'Score', value: score, color: '#ffff00' },
-      { label: 'Wave', value: wave, color: '#00ff88' },
-      { label: 'Gold', value: gold, color: '#ffaa00' },
-      { label: 'Max Combo', value: maxCombo, color: '#ff00ff' },
-      { label: 'Level', value: level, color: '#0088ff' }
+      { label: 'Score', value: score },
+      { label: 'Wave', value: wave },
+      { label: 'Gold', value: gold },
+      { label: 'Max Combo', value: maxCombo },
+      { label: 'Level', value: level }
     ];
 
-    ctx.font = 'bold 11px Arial';
-    ctx.textAlign = 'center';
+    ctx.font = '11px Arial';
+    ctx.textBaseline = 'middle';
 
     for (let i = 0; i < stats.length; i++) {
       const stat = stats[i];
       const y = statY + i * statLineHeight;
+      const x = 30;
 
-      // Stat box background
-      ctx.fillStyle = 'rgba(30, 30, 50, 0.8)';
-      ctx.fillRect(30, y - 8, CANVAS_WIDTH - 60, 16);
+      // Dark rounded box background with very subtle border
+      rrPath(ctx, x, y - statBoxHeight / 2, statBoxWidth, statBoxHeight, r);
+      ctx.fillStyle = 'rgba(25, 25, 40, 0.9)';
+      ctx.fill();
 
-      // Stat box border (colored)
-      ctx.strokeStyle = stat.color;
+      ctx.strokeStyle = 'rgba(100, 100, 120, 0.3)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(30, y - 8, CANVAS_WIDTH - 60, 16);
+      rrPath(ctx, x, y - statBoxHeight / 2, statBoxWidth, statBoxHeight, r);
+      ctx.stroke();
 
-      // Label
-      ctx.fillStyle = stat.color;
+      // Label in muted gray
+      ctx.fillStyle = '#888888';
       ctx.textAlign = 'left';
       ctx.fillText(stat.label + ':', 40, y);
 
-      // Value
+      // Value in white
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'right';
       ctx.fillText(String(stat.value), CANVAS_WIDTH - 40, y);
     }
 
-    // NEW HIGH SCORE animation
+    // NEW HIGH SCORE animation (muted)
     if (score > highScore) {
       const pulse = Math.sin(time * 5) * 0.5 + 0.5;
       ctx.font = 'bold 18px Arial';
       ctx.textAlign = 'center';
-      ctx.fillStyle = `rgba(255, 255, 0, ${pulse * 0.8 + 0.2})`;
-      ctx.shadowBlur = 8 + pulse * 8;
-      ctx.shadowColor = '#ffff00';
+      ctx.fillStyle = `rgba(200, 200, 100, ${pulse * 0.6 + 0.3})`;
+      ctx.shadowBlur = 6 + pulse * 6;
+      ctx.shadowColor = 'rgba(200, 180, 100, 0.5)';
       ctx.fillText('★ NEW HIGH SCORE! ★', CANVAS_WIDTH / 2, 285);
       ctx.shadowBlur = 0;
     }
 
-    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 120, 120, 35, 'MENU', '#00ff00');
-    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60, 120, 35, 'RETRY', '#0088ff');
+    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 120, 120, 35, 'MENU', '#00ccff');
+    drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60, 120, 35, 'RETRY', '#aa88ff');
   }
 
   function handleMenuClick(x, y) {
