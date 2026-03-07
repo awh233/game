@@ -37,6 +37,26 @@
 <script>
 'use strict';
 
+window.onerror = function(msg, url, line, col, err) {
+  var c = document.getElementById('canvas');
+  if (c) {
+    var cx = c.getContext('2d');
+    cx.setTransform(1,0,0,1,0,0);
+    cx.fillStyle = '#000';
+    cx.fillRect(0,0,c.width,c.height);
+    cx.fillStyle = '#ff0000';
+    cx.font = '14px monospace';
+    cx.fillText('ERROR: ' + msg, 10, 30);
+    cx.fillText('Line: ' + line + ' Col: ' + col, 10, 50);
+    if (err && err.stack) {
+      var lines = err.stack.split('\n');
+      for (var i = 0; i < Math.min(lines.length, 8); i++) {
+        cx.fillText(lines[i].substring(0, 60), 10, 70 + i * 18);
+      }
+    }
+  }
+};
+
 (function() {
   // ============================================================================
   // CONSTANTS
