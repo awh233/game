@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#1a0a3e"/>
+      <stop offset="100%" stop-color="#0a0a1a"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="45%" r="35%">
+      <stop offset="0%" stop-color="rgba(0,255,255,0.3)"/>
+      <stop offset="100%" stop-color="rgba(0,255,255,0)"/>
+    </radialGradient>
+    <linearGradient id="shipBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00ccff"/>
+      <stop offset="50%" stop-color="#0066ff"/>
+      <stop offset="100%" stop-color="#003388"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff8800"/>
+      <stop offset="40%" stop-color="#ffcc00"/>
+      <stop offset="100%" stop-color="#00ccff"/>
+    </linearGradient>
+    <filter id="shipGlow">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="textGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="flameGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bg)"/>
+
+  <!-- Stars -->
+  <circle cx="150" cy="180" r="2" fill="#fff" opacity="0.8"/>
+  <circle cx="320" cy="120" r="1.5" fill="#fff" opacity="0.6"/>
+  <circle cx="700" cy="200" r="2.5" fill="#fff" opacity="0.9"/>
+  <circle cx="850" cy="150" r="1.5" fill="#fff" opacity="0.5"/>
+  <circle cx="200" cy="400" r="2" fill="#fff" opacity="0.7"/>
+  <circle cx="880" cy="380" r="1.8" fill="#fff" opacity="0.6"/>
+  <circle cx="100" cy="600" r="1.5" fill="#fff" opacity="0.5"/>
+  <circle cx="920" cy="550" r="2" fill="#fff" opacity="0.7"/>
+  <circle cx="750" cy="700" r="1.5" fill="#fff" opacity="0.4"/>
+  <circle cx="250" cy="750" r="2" fill="#fff" opacity="0.6"/>
+  <circle cx="400" cy="850" r="1.5" fill="#fff" opacity="0.5"/>
+  <circle cx="650" cy="900" r="2" fill="#fff" opacity="0.7"/>
+  <circle cx="500" cy="100" r="1.8" fill="#fff" opacity="0.6"/>
+  <circle cx="130" cy="870" r="2" fill="#fff" opacity="0.4"/>
+  <circle cx="830" cy="800" r="1.5" fill="#fff" opacity="0.5"/>
+
+  <!-- Nebula hint -->
+  <circle cx="200" cy="300" r="80" fill="rgba(200,50,150,0.08)"/>
+  <circle cx="800" cy="650" r="60" fill="rgba(50,150,200,0.08)"/>
+
+  <!-- Ship glow aura -->
+  <ellipse cx="512" cy="420" rx="120" ry="140" fill="url(#glow)"/>
+
+  <!-- Engine flame -->
+  <g filter="url(#flameGlow)">
+    <polygon points="462,520 512,640 562,520" fill="url(#flame)" opacity="0.9"/>
+    <polygon points="475,520 512,600 549,520" fill="#ffcc00" opacity="0.6"/>
+  </g>
+
+  <!-- Player ship -->
+  <g filter="url(#shipGlow)">
+    <polygon points="512,300 592,510 560,470 464,470 432,510" fill="url(#shipBody)" stroke="#00ccff" stroke-width="2"/>
+    <!-- Cockpit -->
+    <ellipse cx="512" cy="400" rx="20" ry="30" fill="rgba(255,255,255,0.2)"/>
+    <ellipse cx="512" cy="390" rx="10" ry="15" fill="rgba(255,255,255,0.15)"/>
+    <!-- Wing highlights -->
+    <line x1="470" y1="465" x2="512" y2="310" stroke="rgba(100,220,255,0.4)" stroke-width="2"/>
+    <line x1="554" y1="465" x2="512" y2="310" stroke="rgba(100,220,255,0.4)" stroke-width="2"/>
+  </g>
+
+  <!-- Bullet trails -->
+  <g opacity="0.6">
+    <rect x="506" y="200" width="12" height="30" rx="6" fill="#00ccff" filter="url(#shipGlow)"/>
+    <rect x="508" y="240" width="8" height="20" rx="4" fill="#00ccff" opacity="0.4"/>
+    <rect x="509" y="265" width="6" height="15" rx="3" fill="#00ccff" opacity="0.2"/>
+  </g>
+
+  <!-- Title text -->
+  <g filter="url(#textGlow)">
+    <text x="512" y="780" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="100" fill="#00ffff" letter-spacing="12">VOID</text>
+  </g>
+  <g filter="url(#textGlow)">
+    <text x="512" y="890" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="100" fill="#ff00ff" letter-spacing="12">RIFT</text>
+  </g>
+
+  <!-- Small enemy silhouettes -->
+  <polygon points="180,550 200,520 220,550" fill="#ff5555" opacity="0.5"/>
+  <rect x="820" y="420" width="30" height="30" fill="#ff8800" opacity="0.4"/>
+  <polygon points="800,560 815,540 830,560 815,580" fill="#ff00ff" opacity="0.4"/>
+</svg>
