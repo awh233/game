@@ -1083,6 +1083,22 @@ window.onerror = function(msg, url, line, col, err) {
     ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
   }
 
+  // Helper: convert any CSS color to rgba with given alpha
+  function colorAlpha(color, alpha) {
+    if (color.startsWith('#')) {
+      const hex = color.length === 4
+        ? color[1]+color[1]+color[2]+color[2]+color[3]+color[3]
+        : color.slice(1);
+      const r = parseInt(hex.substring(0,2),16);
+      const g = parseInt(hex.substring(2,4),16);
+      const b = parseInt(hex.substring(4,6),16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+    if (color.startsWith('rgba')) return color.replace(/,[^,]*\)$/, `,${alpha})`);
+    if (color.startsWith('rgb')) return color.replace('rgb', 'rgba').replace(')', `,${alpha})`);
+    return color;
+  }
+
   function rrPath(x, y, w, h, r) {
     const path = new Path2D();
     path.moveTo(x + r, y);
@@ -1175,7 +1191,8 @@ window.onerror = function(msg, url, line, col, err) {
       const nx = (seed - Math.floor(seed)) * CANVAS_WIDTH;
       const ny = (Math.sin(i * 45.789) * 0.5 + 0.5) * CANVAS_HEIGHT;
       const rad = ctx.createRadialGradient(nx, ny, 0, nx, ny, 30 + (seed * 0.5) * 10);
-      const hue = biome.nebulaHue || 280;
+      const hueObj = biome.nebulaHue || { min: 250, max: 290 };
+      const hue = typeof hueObj === 'number' ? hueObj : (hueObj.min + hueObj.max) / 2;
       rad.addColorStop(0, `hsl(${hue}, 70%, 50%)`);
       rad.addColorStop(1, `hsl(${hue}, 70%, 20%)`);
       ctx.fillStyle = rad;
@@ -1256,7 +1273,7 @@ window.onerror = function(msg, url, line, col, err) {
     ctx.fill();
 
     // Wing edges (darker shade)
-    const darkColor = ship.color.replace('rgb', 'rgba').replace(')', ', 0.6)');
+    const darkColor = colorAlpha(ship.color, 0.6);
     ctx.strokeStyle = darkColor;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -1293,7 +1310,7 @@ window.onerror = function(msg, url, line, col, err) {
     for (let i = 1; i <= 3; i++) {
       const trailOpacity = (1 - i / 4) * 0.4;
       const trailSize = player.radius * (1 - i / 4);
-      ctx.fillStyle = ship.color.replace('rgb', 'rgba').replace(')', `, ${trailOpacity})`);
+      ctx.fillStyle = colorAlpha(ship.color, trailOpacity);
       ctx.beginPath();
       ctx.arc(0, 8 + i * 3, trailSize, 0, Math.PI * 2);
       ctx.fill();
@@ -1543,7 +1560,7 @@ window.onerror = function(msg, url, line, col, err) {
         const trailX = bullet.x - (bullet.vx / 60) * i * 8;
         const trailY = bullet.y - (bullet.vy / 60) * i * 8;
         const trailOpacity = (1 - i / 4) * 0.6;
-        ctx.fillStyle = weaponColor.replace('rgb', 'rgba').replace(')', `, ${trailOpacity})`);
+        ctx.fillStyle = colorAlpha(weaponColor, trailOpacity);
         ctx.beginPath();
         ctx.arc(trailX, trailY, bullet.radius * 0.7, 0, Math.PI * 2);
         ctx.fill();
@@ -1588,7 +1605,7 @@ window.onerror = function(msg, url, line, col, err) {
         const trailX = bullet.x - (bullet.vx / 60) * i * 6;
         const trailY = bullet.y - (bullet.vy / 60) * i * 6;
         const trailOpacity = (1 - i / 3) * 0.5;
-        ctx.fillStyle = bullet.color.replace('rgb', 'rgba').replace(')', `, ${trailOpacity})`);
+        ctx.fillStyle = colorAlpha(bullet.color, trailOpacity);
         ctx.beginPath();
         ctx.arc(trailX, trailY, bullet.radius * 0.6, 0, Math.PI * 2);
         ctx.fill();
@@ -1704,14 +1721,14 @@ window.onerror = function(msg, url, line, col, err) {
         const radius = p.maxRadius * (1 - expand);
 
         // Thicker outer ring
-        ctx.strokeStyle = p.color.replace(')', `, ${1 - expand})`);
+        ctx.strokeStyle = colorAlpha(p.color, 1 - expand);
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.stroke();
 
         // Inner ring at 0.5 opacity
-        ctx.strokeStyle = p.color.replace(')', `, ${(1 - expand) * 0.5})`);
+        ctx.strokeStyle = colorAlpha(p.color, (1 - expand) * 0.5);
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius * 0.5, 0, Math.PI * 2);
