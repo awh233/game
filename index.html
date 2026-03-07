@@ -698,21 +698,23 @@
     timeSurvived += dt;
     pacifistTimer += dt;
 
-    // ========== INPUT ==========
-    const keys = {};
-
     // ========== PLAYER MOVEMENT ==========
     const moveSpeed = player.speed;
     let moveX = 0;
-    if (keys['arrowleft'] || keys['a']) moveX = -1;
-    if (keys['arrowright'] || keys['d']) moveX = 1;
+    let moveY = 0;
+    if (keyState['arrowleft'] || keyState['a']) moveX = -1;
+    if (keyState['arrowright'] || keyState['d']) moveX = 1;
+    if (keyState['arrowup'] || keyState['w']) moveY = -1;
+    if (keyState['arrowdown'] || keyState['s']) moveY = 1;
     player.vx = moveX * moveSpeed;
+    player.vy = moveY * moveSpeed;
     player.x = Math.max(player.radius, Math.min(CANVAS_WIDTH - player.radius, player.x + player.vx * dt));
+    player.y = Math.max(player.radius, Math.min(CANVAS_HEIGHT - player.radius, player.y + player.vy * dt));
 
     // ========== PLAYER FIRING ==========
     const fireRateMul = 1 + (level * 0.05) + (prestigeLevel * 0.05);
     player.fireTimer -= dt;
-    const isFiring = keys[' '];
+    const isFiring = keyState[' '] || touchAutoFire;
 
     if (isFiring && player.fireTimer <= 0) {
       if (player.weapon === 'laser') {
@@ -1255,16 +1257,17 @@
   }
 
   function drawCRTEffect(ctx) {
-    const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      if (Math.random() < 0.02) {
-        data[i] = Math.max(0, data[i] - 50);
-        data[i + 1] = Math.max(0, data[i + 1] - 50);
-        data[i + 2] = Math.max(0, data[i + 2] - 50);
-      }
+    // Lightweight scanline overlay instead of expensive getImageData
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+    for (let y = 0; y < CANVAS_HEIGHT; y += 3) {
+      ctx.fillRect(0, y, CANVAS_WIDTH, 1);
     }
-    ctx.putImageData(imageData, 0, 0);
+    // Subtle vignette
+    const vg = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.9);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.3)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   function drawMenuBackground(ctx) {
@@ -1593,10 +1596,14 @@
   const ctx = canvas.getContext('2d');
 
   function resizeCanvas() {
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(window.innerWidth / CANVAS_WIDTH, window.innerHeight / CANVAS_HEIGHT);
+    const scaleX = (rect.width * dpr) / CANVAS_WIDTH;
+    const scaleY = (rect.height * dpr) / CANVAS_HEIGHT;
+    ctx.scale(scaleX, scaleY);
   }
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
@@ -1612,7 +1619,15 @@
     keyState[e.key.toLowerCase()] = false;
   });
 
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchPlayerStartX = 0;
+  let touchPlayerStartY = 0;
+  let touchDragging = false;
+  let touchAutoFire = false;
+
   canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
     if (e.touches.length === 0) return;
     const touch = e.touches[0];
     const rect = canvas.getBoundingClientRect();
@@ -1628,10 +1643,36 @@
         if (x < CANVAS_WIDTH / 3) switchWeapon('blaster');
         else if (x < 2 * CANVAS_WIDTH / 3) switchWeapon('laser');
         else switchWeapon('missiles');
+      } else {
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        touchPlayerStartX = player.x;
+        touchPlayerStartY = player.y;
+        touchDragging = true;
+        touchAutoFire = true;
       }
     } else if (gameState === 'dead') {
       handleDeadClick(x, y);
     }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!touchDragging || gameState !== 'play') return;
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    const dx = (touch.clientX - touchStartX) * scaleX;
+    const dy = (touch.clientY - touchStartY) * scaleY;
+    player.x = Math.max(player.radius, Math.min(CANVAS_WIDTH - player.radius, touchPlayerStartX + dx));
+    player.y = Math.max(player.radius, Math.min(CANVAS_HEIGHT - player.radius, touchPlayerStartY + dy));
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    touchDragging = false;
+    touchAutoFire = false;
   }, { passive: false });
 
   // ============================================================================
