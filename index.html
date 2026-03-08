@@ -2189,11 +2189,11 @@
         ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
 
         // Circle-wipe effect
-        const progress = 1 - gameState.waveTransitionTimer;
+        const progress = clamp(1 - gameState.waveTransitionTimer, 0, 1);
         ctx.strokeStyle = '#0ff';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, progress * VIRTUAL_HEIGHT * 0.8, 0, Math.PI * 2);
+        ctx.arc(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, Math.max(0.1, Math.abs(progress) * VIRTUAL_HEIGHT * 0.8), 0, Math.PI * 2);
         ctx.stroke();
 
         // Wave number with massive scale-in
@@ -2219,7 +2219,7 @@
         ctx.lineWidth = 1;
         for (let i = 0; i < 3; i++) {
             ctx.beginPath();
-            ctx.arc(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, 30 + i * 20 + progress * 50, 0, Math.PI * 2);
+            ctx.arc(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, Math.max(0.1, 30 + i * 20 + progress * 50), 0, Math.PI * 2);
             ctx.stroke();
         }
 
