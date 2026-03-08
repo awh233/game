@@ -75,7 +75,7 @@
     const FIXED_DT = 1000 / 60;
     const dt = FIXED_DT / 1000;
     const SAVE_KEY = 'void_rift_save';
-    const VERSION = 'v7.1';
+    const VERSION = 'v7.2';
 
     // Array capacity limits to prevent performance degradation
     const MAX_BULLETS = 150;
@@ -154,6 +154,8 @@
     let touchX = null;
     let touchY = null;
     let keys = {};
+    let mouseDown = false;
+    let touchActive = false;
 
     let audioContext = null;
     let masterVolume = 0.3;
@@ -162,22 +164,22 @@
     let musicDucking = 1;
 
     const SHIP_STATS = {
-        viper: { hp: 100, speed: 240, fireRate: 8, damage: 1, magnet: 100, name: 'VIPER' },
-        phantom: { hp: 60, speed: 320, fireRate: 8, damage: 1, magnet: 100, name: 'PHANTOM' },
-        titan: { hp: 150, speed: 180, fireRate: 7, damage: 1.3, magnet: 100, name: 'TITAN' },
-        spectre: { hp: 90, speed: 250, fireRate: 9, damage: 1, magnet: 180, name: 'SPECTRE' },
+        viper: { hp: 100, speed: 240, fireRate: 3.5, damage: 3, magnet: 100, name: 'VIPER' },
+        phantom: { hp: 60, speed: 320, fireRate: 4, damage: 2.5, magnet: 100, name: 'PHANTOM' },
+        titan: { hp: 150, speed: 180, fireRate: 2, damage: 5, magnet: 100, name: 'TITAN' },
+        spectre: { hp: 90, speed: 250, fireRate: 3, damage: 3.5, magnet: 180, name: 'SPECTRE' },
     };
 
     const ENEMIES = {
-        drone: { hp: 20, speed: 100, score: 50, size: 8, color: '#ff3333', fireRate: 0.5, pattern: 'straight' },
-        scout: { hp: 15, speed: 200, score: 75, size: 10, color: '#ff8833', fireRate: 0.3, pattern: 'straight' },
-        tank: { hp: 60, speed: 60, score: 200, size: 16, color: '#00ff44', fireRate: 1, pattern: 'straight' },
-        shooter: { hp: 40, speed: 140, score: 150, size: 12, color: '#ffff44', fireRate: 2, pattern: 'straight' },
-        bomber: { hp: 80, speed: 80, score: 250, size: 14, color: '#ff00ff', fireRate: 0.8, pattern: 'straight' },
-        zigzag: { hp: 35, speed: 150, score: 120, size: 10, color: '#ff6600', fireRate: 0.6, pattern: 'zigzag' },
-        spiral: { hp: 45, speed: 120, score: 140, size: 11, color: '#6600ff', fireRate: 1.2, pattern: 'spiral' },
-        formation: { hp: 25, speed: 130, score: 100, size: 8, color: '#00ffff', fireRate: 0.4, pattern: 'formation' },
-        boss: { hp: 500, speed: 80, score: 2000, size: 40, color: '#0ff', fireRate: 2, pattern: 'boss' },
+        drone: { hp: 30, speed: 100, score: 50, size: 8, color: '#ff3333', fireRate: 0.5, pattern: 'straight' },
+        scout: { hp: 25, speed: 200, score: 75, size: 10, color: '#ff8833', fireRate: 0.3, pattern: 'straight' },
+        tank: { hp: 100, speed: 60, score: 200, size: 16, color: '#00ff44', fireRate: 0.7, pattern: 'straight' },
+        shooter: { hp: 60, speed: 140, score: 150, size: 12, color: '#ffff44', fireRate: 1.5, pattern: 'straight' },
+        bomber: { hp: 120, speed: 80, score: 250, size: 14, color: '#ff00ff', fireRate: 0.8, pattern: 'straight' },
+        zigzag: { hp: 50, speed: 150, score: 120, size: 10, color: '#ff6600', fireRate: 0.6, pattern: 'zigzag' },
+        spiral: { hp: 70, speed: 120, score: 140, size: 11, color: '#6600ff', fireRate: 0.8, pattern: 'spiral' },
+        formation: { hp: 35, speed: 130, score: 100, size: 8, color: '#00ffff', fireRate: 0.4, pattern: 'formation' },
+        boss: { hp: 800, speed: 80, score: 2000, size: 40, color: '#0ff', fireRate: 2, pattern: 'boss' },
     };
 
     const ACHIEVEMENTS = {
@@ -590,7 +592,7 @@
                 damage: dmg,
                 piercing: this.upgrades.pierce,
                 color: '#0f0',
-                size: 5,
+                size: 7,
             });
 
             if (this.weapon === 0) {
@@ -618,6 +620,7 @@
                 });
 
                 playSound('shoot', 300 + Math.random() * 100, 0.08);
+                gameState.screenShake = Math.max(gameState.screenShake, 0.05);
             } else if (this.weapon === 1) {
                 bullets.push({
                     x: this.x,
@@ -1882,12 +1885,12 @@
 
                 if (bullet.type === 'blaster') {
                     // Player bullets: elongated energy bolts
-                    const grad = ctx.createLinearGradient(bullet.x - 2, bullet.y - 3, bullet.x + 2, bullet.y + 3);
+                    const grad = ctx.createLinearGradient(bullet.x - 3, bullet.y - 6, bullet.x + 3, bullet.y + 6);
                     grad.addColorStop(0, colorAlpha('#ffffff', 0.9));
                     grad.addColorStop(0.5, colorAlpha('#0f0', 0.8));
                     grad.addColorStop(1, colorAlpha('#0f0', 0.5));
                     ctx.fillStyle = grad;
-                    ctx.fillRect(bullet.x - 2, bullet.y - 4, 4, 8);
+                    ctx.fillRect(bullet.x - 3, bullet.y - 6, 6, 12);
 
                     // Glow
                     ctx.strokeStyle = colorAlpha('#0f0', 0.6);
@@ -2337,7 +2340,10 @@
 
         if (player) {
             player.update(keys, touchX, touchY, gameState);
-            player.fire();
+            // Require input to fire - space key, mouse click, or touch
+            if (keys[' '] || keys['z'] || keys['Z'] || mouseDown || touchActive) {
+                player.fire();
+            }
         }
 
         enemies.forEach(enemy => enemy.update(gameState));
@@ -2646,6 +2652,14 @@
         keys[e.key] = false;
     });
 
+    canvas.addEventListener('mousedown', (e) => {
+        mouseDown = true;
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+        mouseDown = false;
+    });
+
     canvas.addEventListener('click', (e) => {
         const rect = canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
@@ -2702,6 +2716,7 @@
         const rect = canvas.getBoundingClientRect();
         touchX = (touch.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
         touchY = (touch.clientY - rect.top) / rect.height * VIRTUAL_HEIGHT;
+        touchActive = true;
         e.preventDefault();
 
         if (gameState.mode === 'menu' && gameState.showTutorial) {
@@ -2720,6 +2735,7 @@
     canvas.addEventListener('touchend', () => {
         touchX = null;
         touchY = null;
+        touchActive = false;
     });
 
     // Initialize
