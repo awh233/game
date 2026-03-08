@@ -75,7 +75,7 @@
     const FIXED_DT = 1000 / 60;
     const dt = FIXED_DT / 1000;
     const SAVE_KEY = 'void_rift_save';
-    const VERSION = 'v8.0';
+    const VERSION = 'v9.0';
 
     // Array capacity limits to prevent performance degradation
     const MAX_BULLETS = 150;
@@ -134,6 +134,11 @@
         deathStats: null,
         timeSurvived: 0,
         audioInitialized: false,
+        totalTimePlayed: 0,
+        highestCombo: 0,
+        favoriteShip: 'viper',
+        bossKills: 0,
+        totalGoldLifetime: 0,
     };
 
     let player = null;
@@ -179,6 +184,9 @@
         zigzag: { hp: 50, speed: 150, score: 120, size: 10, color: '#ff6600', fireRate: 0.6, pattern: 'zigzag' },
         spiral: { hp: 70, speed: 120, score: 140, size: 11, color: '#6600ff', fireRate: 0.8, pattern: 'spiral' },
         formation: { hp: 35, speed: 130, score: 100, size: 8, color: '#00ffff', fireRate: 0.4, pattern: 'formation' },
+        splitter: { hp: 50, speed: 120, score: 150, size: 10, color: '#ff6666', fireRate: 0.4, pattern: 'straight' },
+        shielded: { hp: 80, speed: 90, score: 250, size: 14, color: '#00ff99', fireRate: 0.5, pattern: 'straight' },
+        swarm: { hp: 15, speed: 180, score: 35, size: 5, color: '#ffaa00', fireRate: 0.2, pattern: 'straight' },
         boss: { hp: 800, speed: 80, score: 2000, size: 40, color: '#0ff', fireRate: 2, pattern: 'boss' },
     };
 
@@ -203,6 +211,9 @@
         invincible: { name: 'Invincibility', duration: 3, color: '#ff00ff', icon: '◆' },
         magnet: { name: 'Magnet Boost', duration: 10, color: '#00ffff', icon: 'O' },
         scoremulti: { name: 'Score Multiplier', duration: 8, color: '#ff8800', icon: '×' },
+        laser: { name: 'LASER Weapon', duration: 8, color: '#ffff00', icon: '▌' },
+        spread: { name: 'SPREAD Weapon', duration: 8, color: '#ff66ff', icon: '❯' },
+        missile: { name: 'MISSILE Weapon', duration: 8, color: '#ff6600', icon: '✦' },
     };
 
     const KILL_STREAK_MESSAGES = {
@@ -285,6 +296,11 @@
             achievements: gameState.achievements,
             prestigeLevel: gameState.prestigeLevel,
             highScore: window.highScore || 0,
+            totalTimePlayed: gameState.totalTimePlayed,
+            highestCombo: gameState.highestCombo,
+            favoriteShip: gameState.favoriteShip,
+            bossKills: gameState.bossKills,
+            totalGoldLifetime: gameState.totalGoldLifetime,
         };
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     }
@@ -301,6 +317,11 @@
                 gameState.lastPlayDate = saved.lastPlayDate;
                 gameState.achievements = saved.achievements || {};
                 gameState.prestigeLevel = saved.prestigeLevel || 0;
+                gameState.totalTimePlayed = saved.totalTimePlayed || 0;
+                gameState.highestCombo = saved.highestCombo || 0;
+                gameState.favoriteShip = saved.favoriteShip || 'viper';
+                gameState.bossKills = saved.bossKills || 0;
+                gameState.totalGoldLifetime = saved.totalGoldLifetime || 0;
                 window.highScore = saved.highScore || 0;
 
                 const today = new Date().toISOString().split('T')[0];
@@ -348,34 +369,52 @@
         }
     }
 
+    let musicStartTime = 0;
+    let bossApproachOsc = null;
+    let bossApproachGain = null;
+    let lowHPHeartbeat = null;
+    let lowHPHeartbeatGain = null;
+    let lowHPHeartbeatTime = 0;
+
     function startBackgroundMusic() {
         if (!audioContext || audioContext.state !== 'running') return;
         try {
+            musicStartTime = audioContext.currentTime;
             const masterGain = audioContext.createGain();
             masterGain.connect(audioContext.destination);
-            masterGain.gain.setValueAtTime(masterVolume * 0.4, audioContext.currentTime);
+            masterGain.gain.setValueAtTime(masterVolume * 0.25, audioContext.currentTime);
 
+            // Dynamic bass line following chord progression (Am, F, C, G)
             const bassOsc = audioContext.createOscillator();
             const bassGain = audioContext.createGain();
             bassOsc.type = 'sawtooth';
             bassOsc.frequency.setValueAtTime(55, audioContext.currentTime);
-            bassGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+            bassGain.gain.setValueAtTime(0.25, audioContext.currentTime);
             bassOsc.connect(bassGain);
             bassGain.connect(masterGain);
 
+            // Melodic arpeggio
             const arpeggio = audioContext.createOscillator();
             const arpeggioGain = audioContext.createGain();
             arpeggio.type = 'triangle';
             arpeggio.frequency.setValueAtTime(220, audioContext.currentTime);
-            arpeggioGain.gain.setValueAtTime(0.2, audioContext.currentTime);
+            arpeggioGain.gain.setValueAtTime(0.15, audioContext.currentTime);
             arpeggio.connect(arpeggioGain);
             arpeggioGain.connect(masterGain);
 
+            // High-hat rhythm using filtered noise
+            const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.1, audioContext.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseBuffer.length; i++) {
+                noiseData[i] = Math.random() * 2 - 1;
+            }
+
+            // Pad
             const pad = audioContext.createOscillator();
             const padGain = audioContext.createGain();
             pad.type = 'sine';
             pad.frequency.setValueAtTime(110, audioContext.currentTime);
-            padGain.gain.setValueAtTime(0.15, audioContext.currentTime);
+            padGain.gain.setValueAtTime(0.1, audioContext.currentTime);
             pad.connect(padGain);
             padGain.connect(masterGain);
 
@@ -402,49 +441,229 @@
         if (!audioContext || audioContext.state !== 'running') return;
         try {
             const now = audioContext.currentTime;
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-
-            gain.gain.setValueAtTime(masterVolume * 0.7 * musicDucking, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+            const master = audioContext.createGain();
+            master.connect(audioContext.destination);
+            master.gain.setValueAtTime(masterVolume * 0.75 * musicDucking, now);
+            master.gain.exponentialRampToValueAtTime(0.01, now + duration + 0.05);
 
             if (type === 'shoot') {
+                // Quick punchy pew - sine wave with fast frequency sweep
+                const pitchVar = 1 + (Math.random() - 0.5) * 0.2; // ±10% pitch variation
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.6, now + duration);
+                osc.frequency.setValueAtTime(800 * pitchVar, now);
+                osc.frequency.exponentialRampToValueAtTime(200 * pitchVar, now + 0.08);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.connect(gain);
+                gain.connect(master);
+                osc.start(now);
+                osc.stop(now + 0.08);
+
+                // Slight detune for width
+                const osc2 = audioContext.createOscillator();
+                const gain2 = audioContext.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(750 * pitchVar, now);
+                osc2.frequency.exponentialRampToValueAtTime(180 * pitchVar, now + 0.08);
+                gain2.gain.setValueAtTime(0.2, now);
+                gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc2.connect(gain2);
+                gain2.connect(master);
+                osc2.start(now);
+                osc2.stop(now + 0.08);
             } else if (type === 'hit') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(freq + Math.random() * 100, now);
-            } else if (type === 'kill') {
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(freq * 1.5, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + duration);
-            } else if (type === 'pickup') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq * 1.2, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.8, now + duration);
-            } else if (type === 'explosion') {
+                // Metallic impact - noise + mid-frequency tone
+                const pitchVar = 1 + (Math.random() - 0.5) * 0.3; // ±15% pitch variation
                 const noise = audioContext.createBufferSource();
-                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * duration, audioContext.sampleRate);
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.05, audioContext.sampleRate);
                 const data = buffer.getChannelData(0);
                 for (let i = 0; i < buffer.length; i++) {
                     data[i] = Math.random() * 2 - 1;
                 }
                 noise.buffer = buffer;
-                noise.connect(gain);
+                const noiseGain = audioContext.createGain();
+                noiseGain.gain.setValueAtTime(0.3, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                noise.connect(noiseGain);
+                noiseGain.connect(master);
                 noise.start(now);
-                noise.stop(now + duration * 0.5);
 
+                const osc = audioContext.createOscillator();
+                const oscGain = audioContext.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq * 0.8, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.1, now + duration);
-            }
+                osc.frequency.setValueAtTime(300 * pitchVar, now);
+                oscGain.gain.setValueAtTime(0.3, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.connect(oscGain);
+                oscGain.connect(master);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'kill') {
+                // Satisfying crunch - noise + descending square wave
+                const noise = audioContext.createBufferSource();
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.15, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                noise.buffer = buffer;
+                const noiseGain = audioContext.createGain();
+                noiseGain.gain.setValueAtTime(0.4, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                noise.connect(noiseGain);
+                noiseGain.connect(master);
+                noise.start(now);
 
-            osc.start(now);
-            osc.stop(now + duration);
+                const osc = audioContext.createOscillator();
+                const oscGain = audioContext.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+                oscGain.gain.setValueAtTime(0.3, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(oscGain);
+                oscGain.connect(master);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'pickup') {
+                // Musical chime - two sine waves a perfect fifth apart
+                const osc1 = audioContext.createOscillator();
+                const gain1 = audioContext.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(440, now);
+                gain1.gain.setValueAtTime(0.3, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc1.connect(gain1);
+                gain1.connect(master);
+
+                const osc2 = audioContext.createOscillator();
+                const gain2 = audioContext.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(660, now);
+                gain2.gain.setValueAtTime(0.3, now);
+                gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc2.connect(gain2);
+                gain2.connect(master);
+
+                osc1.start(now);
+                osc1.stop(now + 0.2);
+                osc2.start(now);
+                osc2.stop(now + 0.2);
+            } else if (type === 'levelup') {
+                // Ascending arpeggio - C5, E5, G5
+                const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+                notes.forEach((noteFreq, i) => {
+                    const delay = i * 0.08;
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(noteFreq, now + delay);
+                    gain.gain.setValueAtTime(0.25, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.08);
+                    osc.connect(gain);
+                    gain.connect(master);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.08);
+                });
+            } else if (type === 'explosion') {
+                // Deep boom - low sine sweep + filtered noise + sub-bass
+                const noise = audioContext.createBufferSource();
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.3, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                noise.buffer = buffer;
+                const noiseGain = audioContext.createGain();
+                noiseGain.gain.setValueAtTime(0.4, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                noise.connect(noiseGain);
+                noiseGain.connect(master);
+                noise.start(now);
+
+                const osc = audioContext.createOscillator();
+                const oscGain = audioContext.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+                oscGain.gain.setValueAtTime(0.35, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(oscGain);
+                oscGain.connect(master);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'boss_approach') {
+                // Deep rumbling - filtered noise + very low sine
+                const noise = audioContext.createBufferSource();
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 2, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                noise.buffer = buffer;
+                const noiseGain = audioContext.createGain();
+                noiseGain.gain.setValueAtTime(0.2, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 2);
+                noise.connect(noiseGain);
+                noiseGain.connect(master);
+                noise.start(now);
+
+                const osc1 = audioContext.createOscillator();
+                const gain1 = audioContext.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(30, now);
+                gain1.gain.setValueAtTime(0.3, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 2);
+                osc1.connect(gain1);
+                gain1.connect(master);
+                osc1.start(now);
+                osc1.stop(now + 2);
+
+                const osc2 = audioContext.createOscillator();
+                const gain2 = audioContext.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(100, now);
+                osc2.frequency.linearRampToValueAtTime(300, now + 2);
+                gain2.gain.setValueAtTime(0.2, now);
+                gain2.gain.exponentialRampToValueAtTime(0.01, now + 2);
+                osc2.connect(gain2);
+                gain2.connect(master);
+                osc2.start(now);
+                osc2.stop(now + 2);
+            } else if (type === 'wave_clear') {
+                // Quick ascending chord - C4, E4, G4, C5
+                const notes = [261.63, 329.63, 392, 523.25];
+                notes.forEach((noteFreq, i) => {
+                    const delay = i * 0.08;
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(noteFreq, now + delay);
+                    gain.gain.setValueAtTime(0.2, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.15);
+                    osc.connect(gain);
+                    gain.connect(master);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.15);
+                });
+            } else if (type === 'low_hp') {
+                // Pulsing heartbeat - two low thuds
+                for (let beat = 0; beat < 2; beat++) {
+                    const beatTime = now + beat * 0.1;
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(60, beatTime);
+                    gain.gain.setValueAtTime(0.3, beatTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, beatTime + 0.1);
+                    osc.connect(gain);
+                    gain.connect(master);
+                    osc.start(beatTime);
+                    osc.stop(beatTime + 0.1);
+                }
+            }
         } catch (e) {}
     }
 
@@ -498,6 +717,12 @@
             this.trailParticles = [];
             this.engineFlamePhase = 0;
             this.cockpitScanPhase = 0;
+            this.laserActive = false;
+            this.laserEndTime = 0;
+            this.spreadActive = false;
+            this.spreadEndTime = 0;
+            this.missileActive = false;
+            this.missileEndTime = 0;
         }
 
         update(keys, touchX, touchY, gameState) {
@@ -595,7 +820,60 @@
                 size: 7,
             });
 
-            if (this.weapon === 0) {
+            // Check weapon timers
+            if (this.laserActive && audioContext.currentTime < this.laserEndTime) {
+                // LASER weapon
+                bullets.push({
+                    x: this.x,
+                    y: this.y - 15,
+                    vx: 0,
+                    vy: -speed * 1.2,
+                    life: 3,
+                    type: 'laser',
+                    damage: damage * 1.2,
+                    piercing: 100,
+                    color: '#ffff00',
+                    size: 4,
+                });
+                playSound('shoot', 280, 0.08);
+            } else if (this.spreadActive && audioContext.currentTime < this.spreadEndTime) {
+                // SPREAD weapon - 5 bullets in fan
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i - 2) * 0.3; // Spread across 120 degrees
+                    const vx = Math.sin(angle) * speed * 0.8;
+                    const vy = -Math.cos(angle) * speed * 0.9;
+                    bullets.push({
+                        x: this.x,
+                        y: this.y - 15,
+                        vx, vy,
+                        life: 3,
+                        type: 'blaster',
+                        damage: damage * 0.7,
+                        piercing: this.upgrades.pierce,
+                        color: '#ff66ff',
+                        size: 6,
+                    });
+                }
+                playSound('shoot', 320, 0.1);
+            } else if (this.missileActive && audioContext.currentTime < this.missileEndTime) {
+                // MISSILE weapon - homing projectiles
+                bullets.push({
+                    x: this.x,
+                    y: this.y - 15,
+                    vx: 0,
+                    vy: -speed * 0.7,
+                    life: 5,
+                    type: 'missile',
+                    damage: damage * 1.8,
+                    piercing: this.upgrades.pierce,
+                    color: '#ff6600',
+                    size: 7,
+                    homing: true,
+                    targetEnemy: null,
+                });
+                playSound('shoot', 200, 0.12);
+            } else {
+                // Default weapon
                 if (this.activePowerups.tripleshot) {
                     bullets.push(createBullet(this.x - 8, this.y - 15, -speed * 0.2, -speed * 0.97, damage));
                     bullets.push(createBullet(this.x, this.y - 15, 0, -speed, damage));
@@ -620,36 +898,9 @@
                 });
 
                 playSound('shoot', 300 + Math.random() * 100, 0.08);
-                gameState.screenShake = Math.max(gameState.screenShake, 0.05);
-            } else if (this.weapon === 1) {
-                bullets.push({
-                    x: this.x,
-                    y: this.y - 15,
-                    vx: 0,
-                    vy: -speed * 1.2,
-                    life: 3,
-                    type: 'laser',
-                    damage: damage * 0.8,
-                    piercing: this.upgrades.pierce + 1,
-                    color: '#ff0',
-                    size: 3,
-                });
-                playSound('shoot', 250 + Math.random() * 100, 0.1);
-            } else if (this.weapon === 2) {
-                bullets.push({
-                    x: this.x,
-                    y: this.y - 15,
-                    vx: 0,
-                    vy: -speed * 0.8,
-                    life: 3,
-                    type: 'missile',
-                    damage: damage * 1.5,
-                    piercing: this.upgrades.pierce,
-                    color: '#f00',
-                    size: 6,
-                });
-                playSound('shoot', 200 + Math.random() * 100, 0.12);
             }
+
+            gameState.screenShake = Math.max(gameState.screenShake, 0.05);
         }
 
         activatePowerup(type, duration) {
@@ -958,6 +1209,11 @@
             this.damageCracks = [];
             this.rotation = 0;
             this.armPhase = 0;
+            // New enemy properties
+            this.bossPhase = 1; // 1, 2, or 3 for boss
+            this.bossPhaseStart = 0;
+            this.drones = []; // For boss drones
+            this.shieldAngle = 0; // For shielded enemies
         }
 
         update(gameState) {
@@ -966,6 +1222,7 @@
             this.shootCooldown = Math.max(0, this.shootCooldown - dt);
             this.rotation += dt * 2;
             this.armPhase += dt;
+            this.shieldAngle += dt * 1.5;
 
             if (this.pattern === 'zigzag') {
                 this.vx = Math.sin(this.lifetime * 3) * this.speed * 0.6;
@@ -978,13 +1235,23 @@
                 this.vx = Math.sin(this.patternPhase + this.lifetime * 2) * 30;
                 this.vy = this.speed / 60;
             } else if (this.pattern === 'boss') {
-                const phase = this.lifetime % 3;
-                if (phase < 1) {
-                    this.vx = -this.speed * 0.5;
-                } else if (phase < 2) {
-                    this.vx = this.speed * 0.5;
+                // Boss has 3 phases
+                const hpPercent = this.hp / this.maxHp;
+                if (hpPercent > 0.66) {
+                    this.bossPhase = 1;
+                } else if (hpPercent > 0.33) {
+                    this.bossPhase = 2;
                 } else {
-                    this.vx = 0;
+                    this.bossPhase = 3;
+                }
+
+                const phase = this.lifetime % 4;
+                if (phase < 1) {
+                    this.vx = -this.speed * 0.6;
+                } else if (phase < 2) {
+                    this.vx = this.speed * 0.6;
+                } else {
+                    this.vx = Math.sin(this.lifetime * 2) * this.speed * 0.3;
                 }
                 this.vy = this.speed / 60 * 0.3;
             } else {
@@ -1398,6 +1665,92 @@
                     ctx.fillStyle = colorAlpha('#00ff00', lightGlow);
                     ctx.beginPath();
                     ctx.arc(0, 4, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else if (this.type === 'splitter') {
+                    // Splitter: crystalline structure that splits on death
+                    ctx.fillStyle = colorAlpha(this.color, 0.8);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(-7, -2);
+                    ctx.lineTo(-7, 6);
+                    ctx.lineTo(0, 10);
+                    ctx.lineTo(7, 6);
+                    ctx.lineTo(7, -2);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Crystal facets with glow
+                    ctx.strokeStyle = colorAlpha('#ffaaaa', 0.6);
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(-7, -2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(7, -2);
+                    ctx.stroke();
+
+                    // Central energy core
+                    ctx.fillStyle = colorAlpha('#ff0000', 0.5 + Math.sin(this.lifetime * 4) * 0.3);
+                    ctx.beginPath();
+                    ctx.arc(0, 1, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else if (this.type === 'shielded') {
+                    // Shielded: enemy with visible front shield arc
+                    ctx.fillStyle = colorAlpha(this.color, 0.8);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Front shield arc (only hittable from sides/back)
+                    ctx.strokeStyle = colorAlpha('#00ffff', 0.8);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 11, -Math.PI * 0.6, Math.PI * 0.6);
+                    ctx.stroke();
+
+                    // Shield glow pulse
+                    const shieldGlow = 0.4 + Math.sin(this.lifetime * 3) * 0.3;
+                    ctx.strokeStyle = colorAlpha('#00ffff', shieldGlow * 0.5);
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 13, -Math.PI * 0.6, Math.PI * 0.6);
+                    ctx.stroke();
+
+                    // Core
+                    ctx.fillStyle = colorAlpha('#00ff99', 0.9);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                } else if (this.type === 'swarm') {
+                    // Swarm: tiny fast enemies
+                    ctx.fillStyle = colorAlpha(this.color, 0.9);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -4);
+                    ctx.lineTo(-3, 2);
+                    ctx.lineTo(0, 1);
+                    ctx.lineTo(3, 2);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Speed lines
+                    ctx.strokeStyle = colorAlpha('#ffaa00', 0.6);
+                    ctx.lineWidth = 0.5;
+                    for (let i = 1; i <= 2; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(-4 - i * 1.5, -1);
+                        ctx.lineTo(-4 - i * 1.5, 1);
+                        ctx.stroke();
+                    }
+
+                    // Bright center
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
                     ctx.fill();
 
                 } else if (this.type === 'boss') {
@@ -1962,6 +2315,30 @@
         // BULLETS - ENHANCED
         bullets = bullets.filter(bullet => {
             try {
+                // Homing missile logic
+                if (bullet.homing && !bullet.targetEnemy) {
+                    let closest = null;
+                    let closestDist = Infinity;
+                    for (let enemy of enemies) {
+                        if (!enemy.killed) {
+                            const d = distance(bullet.x, bullet.y, enemy.x, enemy.y);
+                            if (d < closestDist) {
+                                closestDist = d;
+                                closest = enemy;
+                            }
+                        }
+                    }
+                    bullet.targetEnemy = closest;
+                }
+
+                // Update velocity for homing missiles
+                if (bullet.homing && bullet.targetEnemy && !bullet.targetEnemy.killed) {
+                    const angle = Math.atan2(bullet.targetEnemy.y - bullet.y, bullet.targetEnemy.x - bullet.x);
+                    const speed = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
+                    bullet.vx = Math.cos(angle) * speed * 1.2;
+                    bullet.vy = Math.sin(angle) * speed * 1.2;
+                }
+
                 bullet.x += bullet.vx * dt;
                 bullet.y += bullet.vy * dt;
                 bullet.life -= dt;
@@ -2307,6 +2684,27 @@
         ctx.stroke();
         ctx.shadowBlur = 0;
 
+        // XP Bar (under health bar)
+        ctx.fillStyle = colorAlpha('#555', 0.6);
+        ctx.beginPath();
+        ctx.roundRect(10, 25, 100, 6, 2);
+        ctx.fill();
+
+        const xpPercent = gameState.xp / gameState.xpMax;
+        const xpGrad = ctx.createLinearGradient(10, 25, 110, 31);
+        xpGrad.addColorStop(0, '#9933ff');
+        xpGrad.addColorStop(1, '#6600ff');
+        ctx.fillStyle = xpGrad;
+        ctx.beginPath();
+        ctx.roundRect(10, 25, 100 * xpPercent, 6, 2);
+        ctx.fill();
+
+        ctx.strokeStyle = colorAlpha('#9933ff', 0.8);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(10, 25, 100, 6, 2);
+        ctx.stroke();
+
         // Score with glow
         ctx.fillStyle = '#0ff';
         ctx.font = 'bold 14px system-ui';
@@ -2468,12 +2866,13 @@
             const stats = gameState.deathStats;
             ctx.fillStyle = '#fff';
             ctx.font = '14px system-ui';
+            ctx.textAlign = 'center';
             const lines = [
-                `Wave: ${stats.wave}`,
-                `Kills: ${stats.kills}`,
-                `Max Combo: ${stats.combo}`,
-                `Gold Earned: ${stats.gold}`,
-                `Time Survived: ${stats.timeSurvived.toFixed(1)}s`,
+                `WAVE: ${stats.wave}`,
+                `KILLS: ${stats.kills}`,
+                `MAX COMBO: ${stats.combo}`,
+                `GOLD EARNED: ${stats.gold}`,
+                `TIME SURVIVED: ${stats.timeSurvived.toFixed(1)}s`,
             ];
             lines.forEach((line, i) => {
                 const delay = i * 0.1;
@@ -2481,10 +2880,18 @@
                 ctx.fillStyle = colorAlpha('#fff', fadeIn);
                 ctx.fillText(line, VIRTUAL_WIDTH / 2, 180 + i * 30);
             });
+
+            // New high score banner
+            if (stats.score > (window.highScore || 0)) {
+                ctx.fillStyle = colorAlpha('#ffff00', Math.sin(Date.now() * 0.01) * 0.5 + 0.5);
+                ctx.font = 'bold 20px system-ui';
+                ctx.fillText('NEW HIGH SCORE!', VIRTUAL_WIDTH / 2, 140);
+            }
         }
 
         ctx.fillStyle = '#00ff00';
         ctx.font = 'bold 14px system-ui';
+        ctx.textAlign = 'center';
         ctx.fillText('CLICK TO RETURN TO MENU', VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT - 50);
 
         if (gameState.score > (window.highScore || 0)) {
@@ -2507,6 +2914,21 @@
         gameState.slowMotionTimer = Math.max(0, gameState.slowMotionTimer - dt);
         gameState.chromaAberrationTimer = Math.max(0, gameState.chromaAberrationTimer - dt);
         gameState.screenShake = Math.max(0, gameState.screenShake - dt * 5);
+        gameState.comboTimer = Math.max(0, gameState.comboTimer - dt);
+        if (gameState.comboTimer <= 0 && gameState.combo > 0) {
+            gameState.combo = 0;
+        }
+
+        // Low HP heartbeat warning
+        if (gameState.health > 0 && gameState.health < gameState.maxHealth * 0.25) {
+            lowHPHeartbeatTime += dt;
+            if (lowHPHeartbeatTime >= 1.5) {
+                playSound('low_hp');
+                lowHPHeartbeatTime = 0;
+            }
+        } else {
+            lowHPHeartbeatTime = 0;
+        }
 
         if (gameState.slowMotionTimer > 0) {
             gameState.slowMotionSpeed = 0.3;
@@ -2636,6 +3058,10 @@
 
                 if (gameState.health <= 0) {
                     gameState.mode = 'dead';
+                    gameState.highestCombo = Math.max(gameState.highestCombo, gameState.combo);
+                    gameState.totalTimePlayed += gameState.timeSurvived;
+                    gameState.totalGoldLifetime += gameState.gold;
+                    savePersistentData();
                     gameState.deathStats = {
                         wave: gameState.wave,
                         kills: gameState.kills,
@@ -2673,6 +3099,10 @@
 
                     if (gameState.health <= 0) {
                         gameState.mode = 'dead';
+                        gameState.highestCombo = Math.max(gameState.highestCombo, gameState.combo);
+                        gameState.totalTimePlayed += gameState.timeSurvived;
+                        gameState.totalGoldLifetime += gameState.gold;
+                        savePersistentData();
                         gameState.deathStats = {
                             wave: gameState.wave,
                             kills: gameState.kills,
@@ -2699,7 +3129,22 @@
                     pickup.collected = true;
                     const pickupType = POWERUP_TYPES[pickup.type];
 
-                    if (pickupType) {
+                    if (pickup.type === 'laser') {
+                        player.laserActive = true;
+                        player.laserEndTime = audioContext.currentTime + 8;
+                        playSound('pickup', 880, 0.2);
+                        showToast('LASER WEAPON ACTIVATED!');
+                    } else if (pickup.type === 'spread') {
+                        player.spreadActive = true;
+                        player.spreadEndTime = audioContext.currentTime + 8;
+                        playSound('pickup', 850, 0.2);
+                        showToast('SPREAD WEAPON ACTIVATED!');
+                    } else if (pickup.type === 'missile') {
+                        player.missileActive = true;
+                        player.missileEndTime = audioContext.currentTime + 8;
+                        playSound('pickup', 820, 0.2);
+                        showToast('MISSILE WEAPON ACTIVATED!');
+                    } else if (pickupType) {
                         player.activatePowerup(pickup.type, pickupType.duration);
                         playSound('pickup', 800, 0.15);
                         showToast(`${pickupType.name} Activated!`);
@@ -2753,6 +3198,8 @@
                     gameState.slowMotionTimer = 0.3;
                     gameState.screenFlash = 0.4;
                     gameState.screenFlashColor = '#ffff00';
+                    gameState.bossKills++;
+                    playSound('wave_clear', 400, 0.5);
                 }
 
                 // Particle explosion - enhanced with more particles
@@ -2782,9 +3229,22 @@
                     gameState.screenShake = Math.max(gameState.screenShake, 0.2);
                 }
 
-                // Pickup drops
+                // Weapon drops (5% chance)
+                if (Math.random() < 0.05) {
+                    const weaponTypes = ['laser', 'spread', 'missile'];
+                    pickups.push({
+                        x: enemy.x,
+                        y: enemy.y,
+                        vx: (Math.random() - 0.5) * 100,
+                        vy: (Math.random() - 0.5) * 100,
+                        type: weaponTypes[Math.floor(Math.random() * weaponTypes.length)],
+                        collected: false,
+                    });
+                }
+
+                // Powerup drops
                 if (Math.random() < 0.15) {
-                    const types = Object.keys(POWERUP_TYPES);
+                    const types = ['rapidfire', 'tripleshot', 'invincible', 'magnet', 'scoremulti'];
                     pickups.push({
                         x: enemy.x,
                         y: enemy.y,
@@ -2795,6 +3255,7 @@
                     });
                 }
 
+                // Gold drops
                 if (Math.random() < 0.3) {
                     pickups.push({
                         x: enemy.x,
@@ -2803,6 +3264,21 @@
                         vy: (Math.random() - 0.5) * 100,
                         collected: false,
                     });
+                }
+
+                // Splitter spawn mini versions
+                if (enemy.type === 'splitter') {
+                    for (let i = 0; i < 2; i++) {
+                        const angle = (i === 0 ? -1 : 1) * Math.PI / 4;
+                        const mini = new Enemy('splitter', enemy.x + Math.cos(angle) * 15, enemy.y + Math.sin(angle) * 15);
+                        mini.hp = enemy.maxHp / 2;
+                        mini.maxHp = enemy.maxHp / 2;
+                        mini.size = enemy.size / 2;
+                        mini.score = Math.floor(enemy.score / 2);
+                        mini.vx = Math.cos(angle) * 100;
+                        mini.vy = Math.sin(angle) * 50;
+                        enemies.push(mini);
+                    }
                 }
 
                 return false;
@@ -2821,15 +3297,24 @@
             gameState.health = Math.min(gameState.health + 20, gameState.maxHealth);
             player.dashEnergy = player.dashMax;
 
-            // Spawn new wave
-            for (let i = 0; i < Math.min(3 + gameState.wave, 8); i++) {
-                const types = Object.keys(ENEMIES).filter(t => t !== 'boss');
-                const type = types[Math.floor(Math.random() * types.length)];
-                enemies.push(new Enemy(type, Math.random() * VIRTUAL_WIDTH, -20));
+            // Spawn new wave with progressive difficulty
+            let availableTypes = ['drone', 'scout', 'tank', 'shooter', 'bomber', 'zigzag', 'spiral', 'formation'];
+            if (gameState.wave >= 3) availableTypes.push('splitter');
+            if (gameState.wave >= 5) availableTypes.push('shielded');
+            if (gameState.wave >= 7) availableTypes.push('swarm');
+
+            const enemyCount = Math.min(3 + gameState.wave, 12);
+            for (let i = 0; i < enemyCount; i++) {
+                const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+                const enemy = new Enemy(type, Math.random() * VIRTUAL_WIDTH, -20);
+                enemies.push(enemy);
             }
 
+            // Boss every 10 waves
             if (gameState.wave % 10 === 0) {
-                enemies.push(new Enemy('boss', VIRTUAL_WIDTH / 2, -50));
+                const boss = new Enemy('boss', VIRTUAL_WIDTH / 2, -50);
+                boss.bossPhaseStart = gameState.timeSurvived;
+                enemies.push(boss);
             }
         }
     }
@@ -2924,6 +3409,7 @@
                     gameState.gold = 0;
                     gameState.wave = 1;
                     gameState.timeSurvived = 0;
+                    gameState.favoriteShip = gameState.selectedShip;
                     player = new Player(gameState.selectedShip);
                     bullets = [];
                     enemies = [];
