@@ -1,2903 +1,1954 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NOVA BREACH - DELUXE EDITION</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: #050510;
-      font-family: 'Arial', sans-serif;
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-      background: #000;
-      width: 100vw;
-      height: 100vh;
-      max-width: 420px;
-      max-height: 750px;
-      image-rendering: auto;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOVA BREACH</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #000;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            max-width: 420px;
+            max-height: 750px;
+            image-rendering: auto;
+        }
+        #errorOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: #f00;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-size: 18px;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-
-<script>
+    <canvas id="gameCanvas"></canvas>
+    <div id="errorOverlay"></div>
+    <script>
 'use strict';
 
-window.onerror = function(msg, url, line, col, err) {
-  var c = document.getElementById('canvas');
-  if (c) {
-    var cx = c.getContext('2d');
-    cx.setTransform(1,0,0,1,0,0);
-    cx.fillStyle = '#000';
-    cx.fillRect(0,0,c.width,c.height);
-    cx.fillStyle = '#ff0000';
-    cx.font = '14px monospace';
-    cx.fillText('ERROR: ' + msg, 10, 30);
-    cx.fillText('Line: ' + line + ' Col: ' + col, 10, 50);
-    if (err && err.stack) {
-      var lines = err.stack.split('\n');
-      for (var i = 0; i < Math.min(lines.length, 8); i++) {
-        cx.fillText(lines[i].substring(0, 60), 10, 70 + i * 18);
-      }
+(() => {
+    // ============================================================================
+    // NOVA BREACH - FINAL MERGED VERSION
+    // ============================================================================
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
+    const VIRTUAL_WIDTH = 420;
+    const VIRTUAL_HEIGHT = 750;
+    let dpr = window.devicePixelRatio || 1;
+
+    function resizeCanvas() {
+        dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = VIRTUAL_WIDTH * dpr;
+        canvas.height = VIRTUAL_HEIGHT * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-  }
-};
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
 
-(function() {
-  // ============================================================================
-  // CONSTANTS
-  // ============================================================================
-  const CANVAS_WIDTH = 420;
-  const CANVAS_HEIGHT = 750;
-  const FIXED_DT = 1000 / 60;
-  const MAX_DELTA_FRAMES = 4;
-  const MAX_PARTICLES = 500;
-  const BIOME_TRANSITION_FRAMES = 20;
-  const MUSIC_BPM = 130;
+    // ============================================================================
+    // CONSTANTS & STATE
+    // ============================================================================
+    const FIXED_DT = 1000 / 60;
+    const dt = FIXED_DT / 1000;
+    const SAVE_KEY = 'void_rift_save';
 
-  // ============================================================================
-  // AUDIO CONTEXT
-  // ============================================================================
-  let audioContext = null;
-  let audioMuted = false;
-  let musicOscillators = [];
-  let musicGains = [];
-
-  function initAudio() {
-    if (!audioContext) {
-      try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (e) {
-        audioMuted = true;
-      }
-    }
-  }
-
-  // ============================================================================
-  // GAME STATE
-  // ============================================================================
-  let gameState = 'menu'; // menu, play, dead, upgrade, pause
-  let screen = 'main'; // main, ships, achievements, daily
-  let score = 0;
-  let wave = 0;
-  let combo = 0;
-  let maxCombo = 0;
-  let gold = 0;
-  let totalGoldEarned = 0;
-  let level = 1;
-  let xp = 0;
-  let xpNeeded = 100;
-  let highScore = 0;
-  let enemiesKilled = 0;
-  let itemsCollected = 0;
-  let timeSurvived = 0;
-  let goldEarned = 0;
-  let dashesUsed = 0;
-  let prestigeLevel = 0;
-  let dailyHighScore = 0;
-  let biomeTransitionTimer = 0;
-  let lastKillTime = 0;
-  let pacifistTimer = 0;
-  let runUpgrades = [];
-
-  // SCREEN SHAKE
-  let shakeTimer = 0, shakeIntensity = 0, shakeX = 0, shakeY = 0;
-  function triggerShake(intensity, dur) { shakeIntensity = intensity; shakeTimer = dur; }
-
-  // SCREEN FLASH
-  let flashTimer = 0, flashColor = '#ffffff';
-  function triggerFlash(color, dur) { flashColor = color; flashTimer = dur; }
-
-  // SCORE POPUPS
-  let scorePopups = [];
-  function addScorePopup(x, y, text, color, size) {
-    scorePopups.push({ x, y, text, color, size: size || 14, timer: 60, maxTimer: 60 });
-  }
-
-  // WAVE ANNOUNCEMENT
-  let waveAnnouncement = null;
-  function showWaveAnnouncement(text, sub, dur) {
-    waveAnnouncement = { text, sub: sub || '', timer: dur || 120, maxTimer: dur || 120 };
-  }
-
-  // COMBO TIMER
-  let comboTimer = 0;
-  const COMBO_TIMEOUT = 2.5;
-  function getComboMul() {
-    return combo >= 50 ? 5 : combo >= 20 ? 3 : combo >= 10 ? 2 : combo >= 5 ? 1.5 : 1;
-  }
-
-  // ============================================================================
-  // BIOME SYSTEM
-  // ============================================================================
-  const BIOMES = [
-    {
-      id: 'void',
-      name: 'VOID',
-      waveRange: [1, 5],
-      colors: { top: '#0a0a1a', bottom: '#1a0a2a' },
-      nebulaHue: { min: 250, max: 290 },
-      desc: 'The endless void',
-      bassNotes: [55, 62, 49, 55], // A1, D2, B0, A1
-      minorKey: true
-    },
-    {
-      id: 'nebula',
-      name: 'NEBULA CORE',
-      waveRange: [6, 10],
-      colors: { top: '#0a1a3a', bottom: '#1a2a4a' },
-      nebulaHue: { min: 180, max: 240 },
-      desc: 'A cosmic nebula',
-      bassNotes: [55, 62, 65, 62], // A1, D2, E2, D2
-      minorKey: true
-    },
-    {
-      id: 'crimson',
-      name: 'CRIMSON RIFT',
-      waveRange: [11, 15],
-      colors: { top: '#3a0a0a', bottom: '#4a1a0a' },
-      nebulaHue: { min: 0, max: 30 },
-      desc: 'A crimson wasteland',
-      bassNotes: [55, 58, 52, 55], // A1, Bb1, E1, A1
-      minorKey: true
-    },
-    {
-      id: 'frozen',
-      name: 'FROZEN ABYSS',
-      waveRange: [16, 20],
-      colors: { top: '#0a1a3a', bottom: '#1a3a5a' },
-      nebulaHue: { min: 180, max: 220 },
-      desc: 'Frozen depths',
-      bassNotes: [55, 62, 67, 62], // A1, D2, G2, D2
-      minorKey: true
-    },
-    {
-      id: 'solar',
-      name: 'SOLAR STORM',
-      waveRange: [21, 999],
-      colors: { top: '#3a2a0a', bottom: '#5a4a1a' },
-      nebulaHue: { min: 20, max: 60 },
-      desc: 'Solar inferno',
-      bassNotes: [55, 59, 62, 59], // A1, B1, D2, B1
-      minorKey: true
-    }
-  ];
-
-  function getCurrentBiome() {
-    for (let b of BIOMES) {
-      if (wave >= b.waveRange[0] && wave <= b.waveRange[1]) {
-        return b;
-      }
-    }
-    return BIOMES[0];
-  }
-
-  // ============================================================================
-  // ACHIEVEMENT SYSTEM
-  // ============================================================================
-  const ACHIEVEMENTS = [
-    { id: 'first_blood', name: 'First Blood', desc: 'Kill 1 enemy', reward: 10, unlocked: false },
-    { id: 'combo_king', name: 'Combo King', desc: 'Reach 20 combo', reward: 50, unlocked: false },
-    { id: 'boss_slayer', name: 'Boss Slayer', desc: 'Kill first boss', reward: 100, unlocked: false },
-    { id: 'wave_10', name: 'Wave 10', desc: 'Reach wave 10', reward: 100, unlocked: false },
-    { id: 'unstoppable', name: 'Unstoppable', desc: 'Reach wave 20', reward: 500, unlocked: false },
-    { id: 'gold_rush', name: 'Gold Rush', desc: 'Collect 1000 gold total', reward: 200, unlocked: false },
-    { id: 'speed_demon', name: 'Speed Demon', desc: 'Dash 50 times in one run', reward: 50, unlocked: false },
-    { id: 'pacifist', name: 'Pacifist', desc: 'Survive 30s without killing', reward: 100, unlocked: false },
-    { id: 'glass_cannon', name: 'Glass Cannon', desc: 'Beat wave 5 with 1 HP', reward: 200, unlocked: false },
-    { id: 'collector', name: 'Collector', desc: 'Pick up 100 items in one run', reward: 100, unlocked: false },
-    { id: 'max_level', name: 'Max Level', desc: 'Reach level 10', reward: 200, unlocked: false },
-    { id: 'millionaire', name: 'Millionaire', desc: 'Score 100,000 points', reward: 500, unlocked: false }
-  ];
-
-  let achievementToast = null;
-
-  function unlockAchievement(id) {
-    const ach = ACHIEVEMENTS.find(a => a.id === id);
-    if (ach && !ach.unlocked) {
-      ach.unlocked = true;
-      gold += ach.reward;
-      achievementToast = { text: `ACHIEVEMENT: ${ach.name}! +${ach.reward}G`, timer: 120 };
-      savePersistentData();
-    }
-  }
-
-  // ============================================================================
-  // SHIP SYSTEM
-  // ============================================================================
-  const SHIPS = [
-    {
-      id: 'viper',
-      name: 'VIPER',
-      desc: 'Balanced Fighter',
-      cost: 0,
-      unlocked: true,
-      color: '#00aaff',
-      statMods: { speedMul: 1.0, hpAdd: 0, damageMul: 1.0, magnetMul: 1.0, fireMul: 1.0, dashLen: 1.0 }
-    },
-    {
-      id: 'phantom',
-      name: 'PHANTOM',
-      desc: '+30% Speed, -1 HP',
-      cost: 500,
-      unlocked: false,
-      color: '#aa00ff',
-      statMods: { speedMul: 1.3, hpAdd: -1, damageMul: 1.0, magnetMul: 1.0, fireMul: 1.0, dashLen: 1.0 }
-    },
-    {
-      id: 'titan',
-      name: 'TITAN',
-      desc: '+3 HP, -30% Speed, +10% DMG',
-      cost: 1000,
-      unlocked: false,
-      color: '#ffaa00',
-      statMods: { speedMul: 0.7, hpAdd: 3, damageMul: 1.1, magnetMul: 1.0, fireMul: 1.0, dashLen: 1.0 }
-    },
-    {
-      id: 'spectre',
-      name: 'SPECTRE',
-      desc: '+50% Magnet, +20% Fire, +2x Dash',
-      cost: 2000,
-      unlocked: false,
-      color: '#00ff88',
-      statMods: { speedMul: 1.0, hpAdd: 0, damageMul: 1.0, magnetMul: 1.5, fireMul: 1.2, dashLen: 2.0 }
-    }
-  ];
-
-  let selectedShipIndex = 0;
-
-  // ============================================================================
-  // DAILY CHALLENGE SYSTEM
-  // ============================================================================
-  function getDailyChallenge() {
-    const today = new Date().toDateString();
-    const seed = today.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const challenges = [
-      { name: 'DOUBLE TIME', desc: '2x Enemy Speed', mod: { enemySpeedMul: 2.0 } },
-      { name: 'NO DASH', desc: 'Dash disabled', mod: { noDash: true } },
-      { name: 'ONE LIFE', desc: '1 HP only', mod: { oneHp: true } },
-      { name: 'BOSS RUSH', desc: 'Bosses only', mod: { bossOnly: true } },
-      { name: 'RAPID FIRE', desc: 'Always rapid fire on', mod: { alwaysRapid: true } },
-      { name: 'DOUBLE GOLD', desc: '2x Gold drops', mod: { goldMul: 2.0 } },
-      { name: 'SLOW MO', desc: '0.5x Enemy Speed', mod: { enemySpeedMul: 0.5 } },
-      { name: 'MAGNET', desc: '2x Pickup range', mod: { magnetMul: 2.0 } }
-    ];
-    return challenges[seed % challenges.length];
-  }
-
-  let dailyChallenge = getDailyChallenge();
-  let activeDailyMod = null;
-
-  // ============================================================================
-  // STREAK SYSTEM
-  // ============================================================================
-  function getPlayStreak() {
-    const lastPlayDate = localStorage.getItem('void_rift_last_play_date');
-    const streakCount = parseInt(localStorage.getItem('void_rift_streak_count') || '0', 10);
-    const today = new Date().toDateString();
-
-    if (lastPlayDate === today) {
-      return streakCount;
-    }
-    const lastDate = lastPlayDate ? new Date(lastPlayDate) : null;
-    const todayDate = new Date(today);
-    if (lastDate) {
-      const diff = (todayDate - lastDate) / (1000 * 60 * 60 * 24);
-      if (Math.abs(diff - 1) < 0.5) {
-        return streakCount + 1;
-      }
-    }
-    return 1;
-  }
-
-  function getStreakMultiplier() {
-    const streak = getPlayStreak();
-    if (streak >= 7) return 2.0;
-    if (streak >= 5) return 1.5;
-    if (streak >= 3) return 1.2;
-    if (streak >= 2) return 1.1;
-    return 1.0;
-  }
-
-  function recordPlayToday() {
-    const today = new Date().toDateString();
-    const lastPlayDate = localStorage.getItem('void_rift_last_play_date');
-    if (lastPlayDate !== today) {
-      const currentStreak = getPlayStreak();
-      localStorage.setItem('void_rift_last_play_date', today);
-      localStorage.setItem('void_rift_streak_count', currentStreak);
-    }
-  }
-
-  // ============================================================================
-  // PLAYER
-  // ============================================================================
-  let player = {
-    x: CANVAS_WIDTH / 2,
-    y: CANVAS_HEIGHT - 80,
-    vx: 0,
-    vy: 0,
-    radius: 12,
-    maxHp: 4,
-    hp: 4,
-    weapon: 'blaster',
-    fireTimer: 0,
-    dashCooldown: 0,
-    dashLength: 200,
-    dashActive: false,
-    dashTimer: 0,
-    dashDir: 0,
-    magnetRange: 100,
-    shield: 0,
-    color: '#00aaff',
-    speed: 200
-  };
-
-  function resetPlayer() {
-    const ship = SHIPS[selectedShipIndex];
-    const mods = ship.statMods;
-    player.x = CANVAS_WIDTH / 2;
-    player.y = CANVAS_HEIGHT - 80;
-    player.vx = 0;
-    player.vy = 0;
-    player.maxHp = Math.max(1, 4 + mods.hpAdd + (activeDailyMod?.mod.oneHp ? -3 : 0));
-    player.hp = player.maxHp;
-    player.weapon = 'blaster';
-    player.fireTimer = 0;
-    player.dashCooldown = 0;
-    player.dashLength = 200 * mods.dashLen;
-    player.magnetRange = 100 * mods.magnetMul * (activeDailyMod?.mod.magnetMul || 1.0);
-    player.shield = 0;
-    player.color = ship.color;
-    player.speed = 200;
-    player.invulnTimer = 0;
-  }
-
-  // ============================================================================
-  // WEAPONS
-  // ============================================================================
-  const WEAPONS = {
-    blaster: {
-      name: 'BLASTER',
-      desc: 'Standard weapon',
-      fireRate: 1.0,
-      bulletDamage: 1.0,
-      bulletSpeed: 400,
-      color: '#00ff00'
-    },
-    laser: {
-      name: 'LASER',
-      desc: 'Continuous beam',
-      fireRate: 1.0,
-      bulletDamage: 0.3,
-      bulletSpeed: 0,
-      color: '#00ff00'
-    },
-    missiles: {
-      name: 'MISSILES',
-      desc: 'Homing projectiles',
-      fireRate: 0.33,
-      bulletDamage: 2.0,
-      bulletSpeed: 250,
-      color: '#ffff00'
-    }
-  };
-
-  let laserActive = false;
-  let laserTarget = null;
-
-  function switchWeapon(weaponId) {
-    if (WEAPONS[weaponId]) {
-      player.weapon = weaponId;
-      laserActive = false;
-      laserTarget = null;
-      playUISound('click');
-    }
-  }
-
-  // ============================================================================
-  // ENEMIES
-  // ============================================================================
-  let enemies = [];
-  let waveEnemiesRemaining = 0;
-  let nextWaveTimer = null;
-  let bossKilled = false;
-  let bossPhaseChangeTimer = 0;
-
-  const ENEMY_TYPES = {
-    drone: {
-      radius: 8,
-      maxHp: 1,
-      speed: 100,
-      fireRate: 1.5,
-      bulletDamage: 0.5,
-      color: '#ff3300',
-      points: 10,
-      goldDrop: 5
-    },
-    scout: {
-      radius: 6,
-      maxHp: 1,
-      speed: 180,
-      fireRate: 0.8,
-      bulletDamage: 0.5,
-      color: '#ffaa00',
-      points: 15,
-      goldDrop: 8
-    },
-    tank: {
-      radius: 14,
-      maxHp: 4,
-      speed: 60,
-      fireRate: 0.5,
-      bulletDamage: 1.0,
-      color: '#00ff00',
-      points: 40,
-      goldDrop: 15
-    },
-    shooter: {
-      radius: 10,
-      maxHp: 2,
-      speed: 80,
-      fireRate: 0.6,
-      bulletDamage: 1.0,
-      color: '#0088ff',
-      points: 25,
-      goldDrop: 12
-    },
-    bomber: {
-      radius: 11,
-      maxHp: 3,
-      speed: 120,
-      fireRate: 2.0,
-      bulletDamage: 1.5,
-      color: '#ff00ff',
-      points: 35,
-      goldDrop: 14
-    },
-    boss: {
-      radius: 25,
-      maxHp: 30,
-      speed: 80,
-      fireRate: 0.5,
-      bulletDamage: 1.5,
-      color: '#ffff00',
-      points: 500,
-      goldDrop: 100
-    }
-  };
-
-  function spawnEnemy(type, x, y, formationData) {
-    if (!ENEMY_TYPES[type]) return;
-    const spec = ENEMY_TYPES[type];
-    const speedMul = activeDailyMod?.mod.enemySpeedMul || 1.0;
-    enemies.push({
-      type,
-      x,
-      y,
-      vx: 0,
-      vy: (type === 'boss') ? 60 : 100,
-      radius: spec.radius,
-      maxHp: spec.maxHp,
-      hp: spec.maxHp,
-      speed: spec.speed * speedMul,
-      fireRate: spec.fireRate,
-      fireTimer: 0,
-      bulletDamage: spec.bulletDamage,
-      color: spec.color,
-      points: spec.points,
-      goldDrop: spec.goldDrop,
-      shootCooldown: 0,
-      bossPhase: 0,
-      bossTimer: 0,
-      bossAttackTimer: 0,
-      chargeTimer: 0,
-      fireTrail: [],
-      iceWalls: [],
-      formationData: formationData || {},
-      movementPattern: formationData?.pattern || 'sine',
-      patternTime: 0,
-      flashTimer: 0,
-      worldTime: 0
-    });
-  }
-
-  // Formation types
-  const FORMATIONS = ['v', 'circle', 'line', 'diamond', 'scatter'];
-
-  function getFormation(waveNum) {
-    return FORMATIONS[waveNum % FORMATIONS.length];
-  }
-
-  function spawnWave(waveNum) {
-    enemies = [];
-    const isBossWave = (waveNum % 5 === 0);
-    bossKilled = false;
-    bossPhaseChangeTimer = 0;
-
-    if (isBossWave) {
-      const bx = CANVAS_WIDTH / 2;
-      spawnEnemy('boss', bx, 80, { pattern: 'orbit' });
-      waveEnemiesRemaining = 1;
-      showWaveAnnouncement('BOSS INCOMING!', 'Wave ' + waveNum, 120);
-      triggerShake(4, 10);
-      playBossEntranceSound();
-    } else {
-      const formation = getFormation(waveNum);
-      const baseCount = 3 + Math.floor(waveNum / 2);
-      const totalEnemies = Math.min(baseCount + waveNum, 20);
-      waveEnemiesRemaining = totalEnemies;
-
-      if (formation === 'v') {
-        spawnVFormation(totalEnemies);
-      } else if (formation === 'circle') {
-        spawnCircleFormation(totalEnemies);
-      } else if (formation === 'line') {
-        spawnLineFormation(totalEnemies);
-      } else if (formation === 'diamond') {
-        spawnDiamondFormation(totalEnemies);
-      } else {
-        spawnScatterFormation(totalEnemies);
-      }
-
-      showWaveAnnouncement(`WAVE ${waveNum}`, formation.toUpperCase() + ' FORMATION', 80);
-      triggerShake(2, 5);
-    }
-  }
-
-  function spawnVFormation(count) {
-    const centerX = CANVAS_WIDTH / 2;
-    const startY = 60;
-    const spacing = 50;
-    const patterns = ['sine', 'figure8', 'strafe'];
-
-    for (let i = 0; i < count; i++) {
-      const offset = i - Math.floor(count / 2);
-      const x = centerX + offset * spacing;
-      const y = startY - Math.abs(offset) * 30;
-      const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      const type = pickEnemyType(wave);
-      spawnEnemy(type, x, y, { pattern, formation: 'v' });
-    }
-  }
-
-  function spawnCircleFormation(count) {
-    const centerX = CANVAS_WIDTH / 2;
-    const centerY = 100;
-    const radius = 80;
-    const patterns = ['orbit', 'strafe'];
-
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const x = centerX + Math.cos(angle) * radius;
-      const y = centerY + Math.sin(angle) * radius;
-      const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      const type = pickEnemyType(wave);
-      spawnEnemy(type, x, y, { pattern, formation: 'circle', angle });
-    }
-  }
-
-  function spawnLineFormation(count) {
-    const startX = 0;
-    const centerY = 100;
-    const spacing = CANVAS_WIDTH / (count + 1);
-
-    for (let i = 0; i < count; i++) {
-      const x = spacing * (i + 1);
-      const type = pickEnemyType(wave);
-      spawnEnemy(type, x, centerY, { pattern: 'strafe', formation: 'line', sweepDir: i % 2 ? 1 : -1 });
-    }
-  }
-
-  function spawnDiamondFormation(count) {
-    const centerX = CANVAS_WIDTH / 2;
-    const centerY = 100;
-    const patterns = ['orbit', 'divebomb'];
-
-    for (let i = 0; i < count; i++) {
-      const ratio = i / Math.max(1, count - 1);
-      const angle = ratio * Math.PI * 2;
-      const distance = 60 + (i % 2) * 40;
-      const x = centerX + Math.cos(angle) * distance;
-      const y = centerY + Math.sin(angle) * distance;
-      const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-      const type = pickEnemyType(wave);
-      spawnEnemy(type, x, y, { pattern, formation: 'diamond', angle });
-    }
-  }
-
-  function spawnScatterFormation(count) {
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * CANVAS_WIDTH;
-      const y = Math.random() * (CANVAS_HEIGHT * 0.3) + 40;
-      const type = pickEnemyType(wave);
-      spawnEnemy(type, x, y, { pattern: 'sine' });
-    }
-  }
-
-  function pickEnemyType(waveNum) {
-    if (waveNum <= 3) {
-      return Math.random() < 0.7 ? 'drone' : 'scout';
-    } else if (waveNum <= 8) {
-      const r = Math.random();
-      return r < 0.4 ? 'drone' : r < 0.7 ? 'scout' : 'shooter';
-    } else if (waveNum <= 15) {
-      const r = Math.random();
-      return r < 0.3 ? 'shooter' : r < 0.6 ? 'tank' : 'bomber';
-    } else {
-      const r = Math.random();
-      return r < 0.2 ? 'tank' : r < 0.5 ? 'bomber' : 'scout';
-    }
-  }
-
-  let enemyBullets = [];
-
-  function spawnEnemyBullet(ex, ey, angle, damage, color) {
-    enemyBullets.push({
-      x: ex,
-      y: ey,
-      vx: Math.cos(angle) * 200,
-      vy: Math.sin(angle) * 200,
-      damage,
-      color: color || '#ff0000',
-      radius: 4,
-      trail: [],
-      age: 0
-    });
-  }
-
-  // ============================================================================
-  // PROJECTILES & PICKUPS
-  // ============================================================================
-  let playerBullets = [];
-  let pickups = [];
-  let particles = [];
-
-  function spawnPlayerBullet(x, y, vx, vy, damage, bulletType) {
-    playerBullets.push({
-      x, y, vx, vy, damage, bulletType,
-      radius: 3,
-      target: null,
-      trail: [],
-      pierceCount: 0,
-      maxPierce: runUpgrades.includes('piercing') ? 1 : 0
-    });
-  }
-
-  function spawnPickup(x, y, type) {
-    pickups.push({ x, y, type, timer: 300, radius: 8, collected: false });
-  }
-
-  function spawnExplosion(x, y, size, color) {
-    triggerShake(Math.min(5, size / 20), 8);
-    for (let i = 0; i < 20 + size / 10; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 150 + Math.random() * 200;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        radius: 2 + Math.random() * 3,
-        color: color || '#ffaa00',
-        timer: 0.5 + Math.random() * 0.5,
-        maxTimer: 0.5 + Math.random() * 0.5,
-        type: 'debris'
-      });
-    }
-    // Ring effect
-    for (let i = 0; i < 3; i++) {
-      particles.push({
-        x, y,
-        vx: 0, vy: 0,
-        radius: 5,
-        color: color || '#ffaa00',
-        timer: 0.3,
-        maxTimer: 0.3,
-        maxRadius: 40 + i * 30,
-        type: 'ring'
-      });
-    }
-  }
-
-  // ============================================================================
-  // UPGRADE SYSTEM (Between waves)
-  // ============================================================================
-  let upgradeSelection = null;
-  let selectedUpgradeIndex = -1;
-
-  const AVAILABLE_UPGRADES = [
-    { id: 'maxhp', name: '+1 Max HP', desc: 'Increase max health' },
-    { id: 'firerate', name: '+15% Fire Rate', desc: 'Shoot faster' },
-    { id: 'movespeed', name: '+20% Move Speed', desc: 'Move faster' },
-    { id: 'damage', name: '+25% Bullet Damage', desc: 'Stronger bullets' },
-    { id: 'magnet', name: '+30% Magnet Range', desc: 'Pick up from farther' },
-    { id: 'piercing', name: 'Piercing Bullets', desc: 'Bullets pass through enemies' },
-    { id: 'reargun', name: 'Rear Gun', desc: 'Shoot backwards too' },
-    { id: 'sidegun', name: 'Side Guns', desc: 'Shoot at 45 degrees' },
-    { id: 'shieldgen', name: 'Shield Recharge', desc: 'Gain shield every 30s' },
-    { id: 'xpmagnet', name: '2x XP Range', desc: 'Collect XP from farther' }
-  ];
-
-  function showUpgradeSelection() {
-    const availableUpgrades = AVAILABLE_UPGRADES.filter(u => !runUpgrades.includes(u.id));
-    const shuffled = availableUpgrades.sort(() => Math.random() - 0.5);
-    upgradeSelection = {
-      upgrades: shuffled.slice(0, 3),
-      timer: 0
+    let gameState = {
+        mode: 'menu', // menu, upgrade, playing, dead
+        wave: 1,
+        score: 0,
+        combo: 0,
+        comboTimer: 0,
+        kills: 0,
+        xp: 0,
+        xpMax: 100,
+        health: 100,
+        maxHealth: 100,
+        selectedShip: 'viper',
+        difficulty: 1,
+        screenShake: 0,
+        screenFlash: 0,
+        screenFlashColor: '#fff',
+        invulnTimer: 0,
+        dashCooldown: 0,
+        deaths: 0,
+        totalKills: 0,
+        gold: 0,
+        playStreak: 0,
+        lastPlayDate: null,
+        achievements: {},
+        dailyChallenge: '',
+        prestigeLevel: 0,
+        upgradeChoices: [],
+        selectedUpgradeIdx: 0,
+        messageTimer: 0,
+        messageText: '',
+        waves: [],
+        numEnemies: 0,
+        isDailyMode: false,
     };
-    selectedUpgradeIndex = -1;
-  }
 
-  function applyUpgrade(upgradeId) {
-    if (!runUpgrades.includes(upgradeId)) {
-      runUpgrades.push(upgradeId);
+    let player = null;
+    let bullets = [];
+    let enemies = [];
+    let explosions = [];
+    let particles = [];
+    let pickups = [];
+    let scorePopups = [];
+    let stars = [];
+    let nebulaClouds = [];
+    let dustParticles = [];
+
+    let touchX = null;
+    let touchY = null;
+    let keys = {};
+
+    let audioContext = null;
+    let masterVolume = 0.3;
+
+    const SHIP_STATS = {
+        viper: { hp: 100, speed: 240, fireRate: 8, damage: 1, magnet: 100, name: 'VIPER' },
+        phantom: { hp: 60, speed: 320, fireRate: 8, damage: 1, magnet: 100, name: 'PHANTOM' },
+        titan: { hp: 150, speed: 180, fireRate: 7, damage: 1.3, magnet: 100, name: 'TITAN' },
+        spectre: { hp: 90, speed: 250, fireRate: 9, damage: 1, magnet: 180, name: 'SPECTRE' },
+    };
+
+    const ENEMIES = {
+        drone: { hp: 20, speed: 100, score: 50, size: 8, color: '#ff3333', fireRate: 0.5 },
+        scout: { hp: 15, speed: 200, score: 75, size: 10, color: '#ff8833', fireRate: 0.3 },
+        tank: { hp: 60, speed: 60, score: 200, size: 16, color: '#00ff44', fireRate: 1 },
+        shooter: { hp: 40, speed: 140, score: 150, size: 12, color: '#ffff44', fireRate: 2 },
+        bomber: { hp: 80, speed: 80, score: 250, size: 14, color: '#ff00ff', fireRate: 0.8 },
+        boss: { hp: 500, speed: 80, score: 2000, size: 40, color: '#0ff', fireRate: 2 },
+    };
+
+    const ACHIEVEMENTS = {
+        first_blood: { name: 'First Blood', desc: 'Kill your first enemy' },
+        combo_king: { name: 'Combo King', desc: 'Get a 10x combo' },
+        boss_slayer: { name: 'Boss Slayer', desc: 'Defeat a boss' },
+        wave_10: { name: 'Wave Master', desc: 'Reach wave 10' },
+        unstoppable: { name: 'Unstoppable', desc: 'Get a 50x combo' },
+        gold_rush: { name: 'Gold Rush', desc: 'Collect 1000 gold' },
+        speed_demon: { name: 'Speed Demon', desc: 'Travel 50000 units' },
+        pacifist: { name: 'Pacifist', desc: 'Complete a wave without shooting' },
+        glass_cannon: { name: 'Glass Cannon', desc: 'Deal 10000 damage in one game' },
+        collector: { name: 'Collector', desc: 'Collect 100 pickups in one game' },
+        max_level: { name: 'Max Level', desc: 'Reach upgrade level 20' },
+        millionaire: { name: 'Millionaire', desc: 'Accumulate 10000 gold lifetime' },
+    };
+
+    // ============================================================================
+    // HELPERS
+    // ============================================================================
+
+    function clamp(v, min, max) {
+        return Math.min(Math.max(v, min), max);
     }
 
-    if (upgradeId === 'maxhp') {
-      player.maxHp++;
-      player.hp = player.maxHp;
-    } else if (upgradeId === 'firerate') {
-      const w = WEAPONS[player.weapon];
-      if (w) w.fireRate *= 0.87;
-    } else if (upgradeId === 'movespeed') {
-      player.speed *= 1.2;
-    } else if (upgradeId === 'damage') {
-      const w = WEAPONS[player.weapon];
-      if (w) w.bulletDamage *= 1.25;
-    } else if (upgradeId === 'magnet') {
-      player.magnetRange *= 1.3;
+    function distance(x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        return Math.sqrt(dx * dx + dy * dy);
     }
 
-    upgradeSelection = null;
-    selectedUpgradeIndex = -1;
-  }
-
-  // ============================================================================
-  // PROCEDURAL MUSIC SYSTEM
-  // ============================================================================
-  function playKickDrum(time, duration) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-
-      osc.frequency.setValueAtTime(150, time);
-      osc.frequency.exponentialRampToValueAtTime(0.01, time + duration);
-
-      gain.gain.setValueAtTime(0.3, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
-
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-
-      osc.start(time);
-      osc.stop(time + duration);
-      musicOscillators.push(osc);
-    } catch (e) {}
-  }
-
-  function playHiHat(time) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const noise = audioContext.createBufferSource();
-      const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.1, audioContext.sampleRate);
-      const data = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < noiseBuffer.length; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-      noise.buffer = noiseBuffer;
-
-      const filter = audioContext.createBiquadFilter();
-      filter.type = 'highpass';
-      filter.frequency.value = 8000;
-
-      const gain = audioContext.createGain();
-      gain.gain.setValueAtTime(0.08, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
-
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(audioContext.destination);
-
-      noise.start(time);
-      noise.stop(time + 0.05);
-    } catch (e) {}
-  }
-
-  function playBassSynth(time, frequency, duration) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(frequency, time);
-
-      gain.gain.setValueAtTime(0.12, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
-
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-
-      osc.start(time);
-      osc.stop(time + duration);
-      musicOscillators.push(osc);
-    } catch (e) {}
-  }
-
-  function playAtmosphericPad(time, duration) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const oscs = [];
-      const baseFreq = 55;
-
-      for (let i = 0; i < 3; i++) {
-        const osc = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(baseFreq * (1 + i * 0.01), time);
-
-        gain.gain.setValueAtTime(0.02, time);
-        gain.gain.linearRampToValueAtTime(0.02, time + duration);
-
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-
-        osc.start(time);
-        osc.stop(time + duration);
-        oscs.push(osc);
-      }
-      musicOscillators.push(...oscs);
-    } catch (e) {}
-  }
-
-  function startProceduralMusic() {
-    if (audioMuted || !audioContext) return;
-    const now = audioContext.currentTime;
-
-    musicOscillators.forEach(osc => {
-      try { osc.stop(now + 0.1); } catch (e) {}
-    });
-    musicOscillators = [];
-
-    const biome = getCurrentBiome();
-    const tempo = MUSIC_BPM / 60;
-    const beatDur = 1 / tempo;
-    const loopDur = beatDur * 16;
-
-    // Kick pattern (beats 1 and 3)
-    for (let beat = 0; beat < 16; beat += 2) {
-      const beatTime = now + beat * beatDur;
-      playKickDrum(beatTime, 0.3);
-    }
-
-    // Hi-hat on 8th notes
-    for (let beat = 0; beat < 16; beat += 0.5) {
-      const beatTime = now + beat * beatDur;
-      playHiHat(beatTime);
-    }
-
-    // Bass synth line
-    const bassNotes = biome.bassNotes || [55, 62, 49, 55];
-    for (let i = 0; i < 4; i++) {
-      const beatTime = now + i * beatDur * 4;
-      playBassSynth(beatTime, bassNotes[i % bassNotes.length], beatDur * 4 * 0.8);
-    }
-
-    // Atmospheric pad
-    playAtmosphericPad(now, loopDur);
-
-    // Loop music
-    const loopTimer = setInterval(() => {
-      if (gameState !== 'play' && gameState !== 'upgrade') {
-        clearInterval(loopTimer);
-        return;
-      }
-      const now2 = audioContext.currentTime;
-      for (let beat = 0; beat < 16; beat += 2) {
-        playKickDrum(now2 + beat * beatDur, 0.3);
-      }
-      for (let beat = 0; beat < 16; beat += 0.5) {
-        playHiHat(now2 + beat * beatDur);
-      }
-      const bassNotes2 = biome.bassNotes || [55, 62, 49, 55];
-      for (let i = 0; i < 4; i++) {
-        playBassSynth(now2 + i * beatDur * 4, bassNotes2[i % bassNotes2.length], beatDur * 4 * 0.8);
-      }
-      playAtmosphericPad(now2, loopDur);
-    }, loopDur * 1000 - 100);
-  }
-
-  function playBossEntranceSound() {
-    if (!audioContext || audioMuted) return;
-    try {
-      const now = audioContext.currentTime;
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-
-      osc.frequency.setValueAtTime(200, now);
-      osc.frequency.exponentialRampToValueAtTime(300, now + 0.3);
-
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.1, now + 0.3);
-
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.3);
-    } catch (e) {}
-  }
-
-  function playUISound(type) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const now = audioContext.currentTime;
-
-      if (type === 'click') {
-        const osc = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-
-        osc.frequency.setValueAtTime(800, now);
-        osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
-
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.05);
-      }
-    } catch (e) {}
-  }
-
-  function playExplosionSound(isBoss) {
-    if (!audioContext || audioMuted) return;
-    try {
-      const now = audioContext.currentTime;
-
-      // Low frequency boom
-      const bassOsc = audioContext.createOscillator();
-      const bassGain = audioContext.createGain();
-
-      bassOsc.frequency.setValueAtTime(150, now);
-      bassOsc.frequency.exponentialRampToValueAtTime(20, now + 0.4);
-
-      bassGain.gain.setValueAtTime(0.2, now);
-      bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-
-      bassOsc.connect(bassGain);
-      bassGain.connect(audioContext.destination);
-      bassOsc.start(now);
-      bassOsc.stop(now + 0.4);
-
-      // Noise burst
-      const noise = audioContext.createBufferSource();
-      const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.2, audioContext.sampleRate);
-      const data = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < noiseBuffer.length; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-      noise.buffer = noiseBuffer;
-
-      const noiseGain = audioContext.createGain();
-      noiseGain.gain.setValueAtTime(0.1, now);
-      noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-
-      noise.connect(noiseGain);
-      noiseGain.connect(audioContext.destination);
-
-      noise.start(now);
-      noise.stop(now + 0.2);
-    } catch (e) {}
-  }
-
-  // ============================================================================
-  // SAVE/LOAD
-  // ============================================================================
-  function savePersistentData() {
-    try {
-      const data = {
-        gold, totalGoldEarned, level, prestigeLevel, highScore,
-        ships: SHIPS.map(s => ({ id: s.id, unlocked: s.unlocked })),
-        achievements: ACHIEVEMENTS.map(a => ({ id: a.id, unlocked: a.unlocked }))
-      };
-      localStorage.setItem('void_rift_save', JSON.stringify(data));
-    } catch (e) {}
-  }
-
-  function loadPersistentData() {
-    try {
-      const saved = localStorage.getItem('void_rift_save');
-      if (!saved) return;
-      const data = JSON.parse(saved);
-
-      gold = data.gold || 0;
-      totalGoldEarned = data.totalGoldEarned || 0;
-      level = data.level || 1;
-      prestigeLevel = data.prestigeLevel || 0;
-      highScore = data.highScore || 0;
-
-      if (data.ships) {
-        data.ships.forEach(savedShip => {
-          const ship = SHIPS.find(s => s.id === savedShip.id);
-          if (ship) ship.unlocked = savedShip.unlocked;
-        });
-      }
-
-      if (data.achievements) {
-        data.achievements.forEach(savedAch => {
-          const ach = ACHIEVEMENTS.find(a => a.id === savedAch.id);
-          if (ach) ach.unlocked = savedAch.unlocked;
-        });
-      }
-    } catch (e) {}
-  }
-
-  // ============================================================================
-  // RENDERING
-  // ============================================================================
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  let lastTime = Date.now();
-
-  function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = CANVAS_WIDTH * window.devicePixelRatio;
-    canvas.height = CANVAS_HEIGHT * window.devicePixelRatio;
-    ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
-  }
-
-  // Helper: convert any CSS color to rgba with given alpha
-  function colorAlpha(color, alpha) {
-    if (color.startsWith('#')) {
-      const hex = color.length === 4
-        ? color[1]+color[1]+color[2]+color[2]+color[3]+color[3]
-        : color.slice(1);
-      const r = parseInt(hex.substring(0,2),16);
-      const g = parseInt(hex.substring(2,4),16);
-      const b = parseInt(hex.substring(4,6),16);
-      return `rgba(${r},${g},${b},${alpha})`;
-    }
-    if (color.startsWith('rgba')) return color.replace(/,[^,]*\)$/, `,${alpha})`);
-    if (color.startsWith('rgb')) return color.replace('rgb', 'rgba').replace(')', `,${alpha})`);
-    return color;
-  }
-
-  function rrPath(x, y, w, h, r) {
-    const path = new Path2D();
-    path.moveTo(x + r, y);
-    path.lineTo(x + w - r, y);
-    path.arcTo(x + w, y, x + w, y + r, r);
-    path.lineTo(x + w, y + h - r);
-    path.arcTo(x + w, y + h, x + w - r, y + h, r);
-    path.lineTo(x + r, y + h);
-    path.arcTo(x, y + h, x, y + h - r, r);
-    path.lineTo(x, y + r);
-    path.arcTo(x, y, x + r, y, r);
-    path.closePath();
-    return path;
-  }
-
-  function drawButton(ctx, cx, cy, w, h, text, color) {
-    const path = rrPath(cx - w / 2, cy - h / 2, w, h, 8);
-
-    // Dark gradient fill (glass effect)
-    const grad = ctx.createLinearGradient(cx - w / 2, cy - h / 2, cx - w / 2, cy + h / 2);
-    grad.addColorStop(0, 'rgba(20, 25, 40, 0.9)');
-    grad.addColorStop(1, 'rgba(10, 12, 25, 0.9)');
-    ctx.fillStyle = grad;
-    ctx.fill(path);
-
-    // Subtle top highlight
-    const topPath = rrPath(cx - w / 2, cy - h / 2, w, h * 0.4, 8);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.fill(topPath);
-
-    // Colored border with reduced opacity
-    ctx.strokeStyle = color || '#00ccff';
-    ctx.globalAlpha = 0.6;
-    ctx.lineWidth = 2;
-    ctx.stroke(path);
-    ctx.globalAlpha = 1;
-
-    // Outer glow
-    ctx.shadowColor = color || '#00ccff';
-    ctx.shadowBlur = 8;
-    ctx.strokeStyle = color || '#00ccff';
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 1;
-    ctx.stroke(path);
-    ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
-
-    // Text in accent color
-    ctx.fillStyle = color || '#00ccff';
-    ctx.font = 'bold 16px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, cx, cy);
-  }
-
-  function drawNebulaBackground() {
-    const biome = getCurrentBiome();
-    const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    grad.addColorStop(0, biome.colors.top);
-    grad.addColorStop(1, biome.colors.bottom);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // Starfield with parallax scrolling (3 layers)
-    const starLayers = [
-      { count: 50, speed: 0.3, size: 0.5 },
-      { count: 60, speed: 0.5, size: 1 },
-      { count: 40, speed: 0.8, size: 1.5 }
-    ];
-
-    const time = Date.now() * 0.0001;
-    for (let layer of starLayers) {
-      for (let i = 0; i < layer.count; i++) {
-        const seed = Math.sin(i * 12.9898) * 43758.5453;
-        const sx = ((seed - Math.floor(seed)) * CANVAS_WIDTH + time * layer.speed * 100) % CANVAS_WIDTH;
-        const sy = ((Math.sin(i * 78.233 + seed) * 0.5 + 0.5) * CANVAS_HEIGHT);
-        const twinkle = Math.sin(Date.now() * 0.001 + i) * 0.5 + 0.5;
-        const opacity = 0.3 + twinkle * 0.4;
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-        ctx.beginPath();
-        ctx.arc(sx, sy, layer.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Subtle nebula wisps with low opacity
-    try {
-    ctx.globalAlpha = 0.05;
-    for (let i = 0; i < 7; i++) {
-      const seed = Math.sin(i * 23.456) * 43758.5453;
-      const nx = (seed - Math.floor(seed)) * CANVAS_WIDTH;
-      const ny = (Math.sin(i * 45.789) * 0.5 + 0.5) * CANVAS_HEIGHT;
-      const seedFrac = seed - Math.floor(seed);
-      const rad = ctx.createRadialGradient(nx, ny, 0, nx, ny, 30 + seedFrac * 50);
-      const hueObj = biome.nebulaHue || { min: 250, max: 290 };
-      const hue = typeof hueObj === 'number' ? hueObj : (hueObj.min + hueObj.max) / 2;
-      rad.addColorStop(0, `hsl(${hue}, 70%, 50%)`);
-      rad.addColorStop(1, `hsl(${hue}, 70%, 20%)`);
-      ctx.fillStyle = rad;
-      ctx.fillRect(nx - 40, ny - 40, 80, 80);
-    }
-    ctx.globalAlpha = 1;
-    } catch(e) { ctx.globalAlpha = 1; }
-
-    // Space dust particles
-    try {
-    ctx.globalAlpha = 0.15;
-    for (let i = 0; i < 20; i++) {
-      const seed = Math.sin(i * 34.567) * 43758.5453;
-      const dx = (seed - Math.floor(seed)) * CANVAS_WIDTH;
-      const dy = ((Math.sin(i * 56.789 + seed) * 0.5 + 0.5) * CANVAS_HEIGHT + Date.now() * 0.01 * (i * 0.01)) % CANVAS_HEIGHT;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.beginPath();
-      const dustFrac = seed - Math.floor(seed);
-      ctx.arc(dx, dy, 1 + dustFrac * 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    } catch(e) { ctx.globalAlpha = 1; }
-  }
-
-  function drawPlayer() {
-    const ship = SHIPS[selectedShipIndex];
-
-    // Skip rendering every other frame during invulnerability
-    if (player.invulnTimer > 0 && Math.floor(player.invulnTimer * 10) % 2 === 0) {
-      return;
-    }
-
-    ctx.save();
-    ctx.translate(player.x, player.y);
-
-    // Engine exhaust (flame trails)
-    const exhaustLength1 = 8 + Math.random() * 5;
-    const exhaustLength2 = 7 + Math.random() * 6;
-
-    // Left exhaust
-    const grad1 = ctx.createLinearGradient(0, 0, -2, exhaustLength1);
-    grad1.addColorStop(0, 'rgba(255, 150, 0, 1)');
-    grad1.addColorStop(0.5, 'rgba(255, 100, 0, 0.5)');
-    grad1.addColorStop(1, 'rgba(255, 100, 0, 0)');
-    ctx.fillStyle = grad1;
-    ctx.beginPath();
-    ctx.moveTo(-2, 5);
-    ctx.lineTo(-4, 5 + exhaustLength1);
-    ctx.lineTo(0, 5 + exhaustLength1);
-    ctx.closePath();
-    ctx.fill();
-
-    // Right exhaust
-    const grad2 = ctx.createLinearGradient(0, 0, 2, exhaustLength2);
-    grad2.addColorStop(0, 'rgba(255, 150, 0, 1)');
-    grad2.addColorStop(0.5, 'rgba(255, 100, 0, 0.5)');
-    grad2.addColorStop(1, 'rgba(255, 100, 0, 0)');
-    ctx.fillStyle = grad2;
-    ctx.beginPath();
-    ctx.moveTo(2, 5);
-    ctx.lineTo(4, 5 + exhaustLength2);
-    ctx.lineTo(0, 5 + exhaustLength2);
-    ctx.closePath();
-    ctx.fill();
-
-    // Glow effect
-    ctx.shadowColor = ship.color;
-    ctx.shadowBlur = 18;
-
-    // Main hull - spaceship shape
-    ctx.fillStyle = ship.color;
-    ctx.beginPath();
-    ctx.moveTo(0, -14);  // Pointed nose
-    ctx.lineTo(8, 2);    // Right wing sweep back
-    ctx.lineTo(6, 8);    // Right engine pod base
-    ctx.lineTo(3, 12);   // Right bottom
-    ctx.lineTo(-3, 12);  // Left bottom
-    ctx.lineTo(-6, 8);   // Left engine pod base
-    ctx.lineTo(-8, 2);   // Left wing sweep back
-    ctx.closePath();
-    ctx.fill();
-
-    // Wing edges (darker shade)
-    const darkColor = colorAlpha(ship.color, 0.6);
-    ctx.strokeStyle = darkColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, -14);
-    ctx.lineTo(8, 2);
-    ctx.lineTo(6, 8);
-    ctx.moveTo(0, -14);
-    ctx.lineTo(-8, 2);
-    ctx.lineTo(-6, 8);
-    ctx.stroke();
-
-    // Engine pods (small circles at wing tips with glow)
-    ctx.shadowColor = ship.color;
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = ship.color;
-    ctx.beginPath();
-    ctx.arc(6, 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-6, 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Cockpit bright highlight
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.beginPath();
-    ctx.arc(0, -7, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-
-    // Glow trail (fading circles behind ship)
-    for (let i = 1; i <= 3; i++) {
-      const trailOpacity = (1 - i / 4) * 0.4;
-      const trailSize = player.radius * (1 - i / 4);
-      ctx.fillStyle = colorAlpha(ship.color, trailOpacity);
-      ctx.beginPath();
-      ctx.arc(0, 8 + i * 3, trailSize, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
-
-    // Shield - pulsing double ring
-    if (player.shield > 0) {
-      const shieldAlpha = Math.min(1, player.shield / 100);
-      const pulse = Math.sin(Date.now() * 0.008) * 0.3 + 0.7;
-
-      // Outer ring
-      ctx.strokeStyle = `rgba(100, 200, 255, ${shieldAlpha * 0.5})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius + 10 + pulse * 2, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Inner ring (brighter)
-      ctx.strokeStyle = `rgba(150, 220, 255, ${shieldAlpha * 0.8})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius + 6, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
-
-  function drawEnemies() {
-    for (let enemy of enemies) {
-      ctx.save();
-      ctx.translate(enemy.x, enemy.y);
-
-      // Subtle shadow glow in enemy color
-      ctx.shadowColor = enemy.color;
-      ctx.shadowBlur = 12;
-
-      // Flash white when hit
-      if (enemy.flashTimer > 0) {
-        ctx.globalAlpha = 0.7;
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowBlur = 0;
-      } else {
-        ctx.fillStyle = enemy.color;
-      }
-
-      // Draw enemy shapes per type
-      if (enemy.type === 'drone') {
-        // Small triangular fighter pointing down
-        ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(7, 6);
-        ctx.lineTo(-7, 6);
-        ctx.closePath();
-        ctx.fill();
-        // Wing edges darker
-        if (enemy.flashTimer === 0) {
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
+    function colorAlpha(color, alpha) {
+        if (!color || typeof color !== 'string') {
+            return `rgba(255,255,255,${alpha})`;
         }
-      } else if (enemy.type === 'scout') {
-        // Diamond/rhombus rotating slowly
-        const angle = Date.now() * 0.003;
-        ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.moveTo(0, -6);
-        ctx.lineTo(6, 0);
-        ctx.lineTo(0, 6);
-        ctx.lineTo(-6, 0);
-        ctx.closePath();
-        ctx.fill();
-      } else if (enemy.type === 'tank') {
-        // Hexagon with thick border and inner detail
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI / 3);
-          const x = Math.cos(angle) * 14;
-          const y = Math.sin(angle) * 14;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        // Detail lines
-        if (enemy.flashTimer === 0) {
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-      } else if (enemy.type === 'shooter') {
-        // Arrow/chevron pointing down
-        ctx.beginPath();
-        ctx.moveTo(0, -10);
-        ctx.lineTo(9, 4);
-        ctx.lineTo(4, 4);
-        ctx.lineTo(4, 8);
-        ctx.lineTo(-4, 8);
-        ctx.lineTo(-4, 4);
-        ctx.lineTo(-9, 4);
-        ctx.closePath();
-        ctx.fill();
-        // Wing glow
-        if (enemy.flashTimer === 0) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(-9, 4);
-          ctx.lineTo(0, -10);
-          ctx.lineTo(9, 4);
-          ctx.stroke();
-        }
-      } else if (enemy.type === 'bomber') {
-        // Fat oval/ellipse pulsing
-        const pulse = Math.sin(Date.now() * 0.006) * 1.5 + 1;
-        ctx.shadowBlur = 15 + pulse * 3;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 11, 11 + pulse, 0, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (enemy.type === 'boss') {
-        // Large diamond with rotating spike ring
-        const rotation = Date.now() * 0.002;
-        ctx.shadowBlur = 20;
-
-        // Inner glowing core
-        ctx.fillStyle = enemy.flashTimer > 0 ? '#ffffff' : enemy.color;
-        ctx.beginPath();
-        ctx.arc(0, 0, 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Main diamond
-        ctx.fillStyle = enemy.flashTimer > 0 ? '#ffffff' : enemy.color;
-        ctx.beginPath();
-        ctx.moveTo(0, -20);
-        ctx.lineTo(20, 0);
-        ctx.lineTo(0, 20);
-        ctx.lineTo(-20, 0);
-        ctx.closePath();
-        ctx.fill();
-
-        // Rotating spike ring (8 spikes)
-        for (let i = 0; i < 8; i++) {
-          const angle = (i * Math.PI / 4) + rotation;
-          const x = Math.cos(angle) * 25;
-          const y = Math.sin(angle) * 25;
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(x, y);
-          ctx.lineTo(Math.cos(angle + 0.3) * 28, Math.sin(angle + 0.3) * 28);
-          ctx.closePath();
-          ctx.fill();
-        }
-
-        // Outer concentric ring
-        ctx.strokeStyle = enemy.flashTimer > 0 ? '#ffffff' : enemy.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, 30, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      ctx.restore();
-
-      // HP bar (if HP < maxHP and not boss)
-      if (enemy.type !== 'boss' && enemy.hp < enemy.maxHp) {
-        const barW = enemy.radius * 2 + 4;
-        const barH = 2;
-        const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(enemy.x - barW / 2, enemy.y + enemy.radius + 8, barW, barH);
-
-        const barColor = hpRatio > 0.66 ? '#00ff00' : hpRatio > 0.33 ? '#ffaa00' : '#ff0000';
-        ctx.fillStyle = barColor;
-        ctx.fillRect(enemy.x - barW / 2, enemy.y + enemy.radius + 8, barW * hpRatio, barH);
-
-        ctx.strokeStyle = barColor;
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(enemy.x - barW / 2, enemy.y + enemy.radius + 8, barW, barH);
-      }
-
-      // Boss HP bar at top of screen (wider with glow)
-      if (enemy.type === 'boss') {
-        const barW = 200;
-        const barH = 8;
-        const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
-        const barColor = hpRatio > 0.66 ? '#00ff00' : hpRatio > 0.33 ? '#ffaa00' : '#ff0000';
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.beginPath();
-        ctx.moveTo(CANVAS_WIDTH / 2 - barW / 2 + 4, 15);
-        ctx.lineTo(CANVAS_WIDTH / 2 + barW / 2 - 4, 15);
-        ctx.arcTo(CANVAS_WIDTH / 2 + barW / 2, 15, CANVAS_WIDTH / 2 + barW / 2, 15 + barH, 4);
-        ctx.lineTo(CANVAS_WIDTH / 2 + barW / 2, 15 + barH - 4);
-        ctx.arcTo(CANVAS_WIDTH / 2 + barW / 2, 15 + barH, CANVAS_WIDTH / 2 - barW / 2 + 4, 15 + barH, 4);
-        ctx.lineTo(CANVAS_WIDTH / 2 - barW / 2, 15 + barH - 4);
-        ctx.arcTo(CANVAS_WIDTH / 2 - barW / 2, 15 + barH, CANVAS_WIDTH / 2 - barW / 2 + 4, 15, 4);
-        ctx.lineTo(CANVAS_WIDTH / 2 - barW / 2 + 4, 15);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = barColor;
-        ctx.globalAlpha = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(CANVAS_WIDTH / 2 - barW / 2 + 4, 15);
-        ctx.lineTo(CANVAS_WIDTH / 2 - barW / 2 + 4 + (barW - 8) * hpRatio, 15);
-        ctx.arcTo(CANVAS_WIDTH / 2 - barW / 2 + 4 + (barW - 8) * hpRatio, 15, CANVAS_WIDTH / 2 - barW / 2 + 4 + (barW - 8) * hpRatio, 15 + barH, 4);
-        ctx.lineTo(CANVAS_WIDTH / 2 - barW / 2 + 4, 15 + barH - 4);
-        ctx.arcTo(CANVAS_WIDTH / 2 - barW / 2, 15 + barH, CANVAS_WIDTH / 2 - barW / 2 + 4, 15, 4);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-
-        ctx.strokeStyle = barColor;
-        ctx.shadowColor = barColor;
-        ctx.shadowBlur = 8;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(CANVAS_WIDTH / 2 - barW / 2, 15, barW, barH);
-        ctx.shadowBlur = 0;
-      }
-    }
-  }
-
-  function drawProjectiles() {
-    for (let bullet of playerBullets) {
-      const weaponColor = WEAPONS[player.weapon].color;
-      const angle = Math.atan2(bullet.vy, bullet.vx);
-
-      // Bright white core
-      ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = weaponColor;
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.ellipse(bullet.x, bullet.y, bullet.radius * 2, bullet.radius, angle, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Colored outer glow
-      ctx.fillStyle = weaponColor;
-      ctx.globalAlpha = 0.4;
-      ctx.beginPath();
-      ctx.ellipse(bullet.x, bullet.y, bullet.radius * 2.5, bullet.radius * 1.3, angle, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      // Trail of 3 fading dots
-      for (let i = 1; i <= 3; i++) {
-        const trailX = bullet.x - (bullet.vx / 60) * i * 8;
-        const trailY = bullet.y - (bullet.vy / 60) * i * 8;
-        const trailOpacity = (1 - i / 4) * 0.6;
-        ctx.fillStyle = colorAlpha(weaponColor, trailOpacity);
-        ctx.beginPath();
-        ctx.arc(trailX, trailY, bullet.radius * 0.7, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.shadowBlur = 0;
-    }
-
-    for (let bullet of enemyBullets) {
-      const age = bullet.age || 0;
-      const spin = age * 0.1;
-
-      ctx.save();
-      ctx.translate(bullet.x, bullet.y);
-      ctx.rotate(spin);
-
-      // Spinning diamond shape
-      ctx.fillStyle = bullet.color;
-      ctx.shadowColor = bullet.color;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.moveTo(0, -bullet.radius);
-      ctx.lineTo(bullet.radius, 0);
-      ctx.lineTo(0, bullet.radius);
-      ctx.lineTo(-bullet.radius, 0);
-      ctx.closePath();
-      ctx.fill();
-
-      // Inner bright core
-      ctx.fillStyle = '#ffff88';
-      ctx.globalAlpha = 0.8;
-      ctx.beginPath();
-      ctx.arc(0, 0, bullet.radius * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      ctx.restore();
-      ctx.shadowBlur = 0;
-
-      // Trail of 2 dots
-      for (let i = 1; i <= 2; i++) {
-        const trailX = bullet.x - (bullet.vx / 60) * i * 6;
-        const trailY = bullet.y - (bullet.vy / 60) * i * 6;
-        const trailOpacity = (1 - i / 3) * 0.5;
-        ctx.fillStyle = colorAlpha(bullet.color, trailOpacity);
-        ctx.beginPath();
-        ctx.arc(trailX, trailY, bullet.radius * 0.6, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
-
-  function drawPickups() {
-    for (let pickup of pickups) {
-      if (pickup.collected) continue;
-
-      const bob = Math.sin(Date.now() * 0.006) * 4;
-      const pickupY = pickup.y + bob;
-
-      ctx.save();
-      ctx.translate(pickup.x, pickupY);
-
-      let color = '#ffcc00';
-      let shape = 'diamond';
-
-      // Shape and color per type
-      if (pickup.type === 'gold') {
-        color = '#ffcc00';
-        shape = 'diamond';
-      } else if (pickup.type === 'health') {
-        color = '#00ff00';
-        shape = 'plus';
-      } else if (pickup.type === 'shield') {
-        color = '#00ccff';
-        shape = 'shield';
-      } else if (pickup.type === 'rapid') {
-        color = '#ffaa44';
-        shape = 'bolt';
-      } else if (pickup.type === 'spread') {
-        color = '#ff00ff';
-        shape = 'star';
-      }
-
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 12;
-      ctx.fillStyle = color;
-
-      // Draw shape
-      if (shape === 'diamond') {
-        const rotation = Date.now() * 0.004;
-        ctx.rotate(rotation);
-        ctx.beginPath();
-        ctx.moveTo(0, -pickup.radius);
-        ctx.lineTo(pickup.radius, 0);
-        ctx.lineTo(0, pickup.radius);
-        ctx.lineTo(-pickup.radius, 0);
-        ctx.closePath();
-        ctx.fill();
-      } else if (shape === 'plus') {
-        ctx.fillRect(-pickup.radius * 0.4, -pickup.radius, pickup.radius * 0.8, pickup.radius * 2);
-        ctx.fillRect(-pickup.radius, -pickup.radius * 0.4, pickup.radius * 2, pickup.radius * 0.8);
-      } else if (shape === 'shield') {
-        ctx.beginPath();
-        ctx.moveTo(-pickup.radius, -pickup.radius);
-        ctx.lineTo(pickup.radius, -pickup.radius);
-        ctx.arcTo(pickup.radius, pickup.radius * 0.5, 0, pickup.radius, pickup.radius);
-        ctx.arcTo(-pickup.radius, pickup.radius * 0.5, -pickup.radius, -pickup.radius, pickup.radius);
-        ctx.closePath();
-        ctx.fill();
-      } else if (shape === 'bolt') {
-        // Lightning bolt
-        ctx.beginPath();
-        ctx.moveTo(0, -pickup.radius);
-        ctx.lineTo(pickup.radius * 0.4, -pickup.radius * 0.3);
-        ctx.lineTo(pickup.radius * 0.2, 0);
-        ctx.lineTo(pickup.radius * 0.5, pickup.radius * 0.3);
-        ctx.lineTo(0, pickup.radius);
-        ctx.lineTo(-pickup.radius * 0.3, pickup.radius * 0.2);
-        ctx.lineTo(-pickup.radius * 0.1, -pickup.radius * 0.3);
-        ctx.lineTo(-pickup.radius * 0.5, -pickup.radius * 0.2);
-        ctx.closePath();
-        ctx.fill();
-      } else if (shape === 'star') {
-        ctx.beginPath();
-        for (let i = 0; i < 10; i++) {
-          const angle = (i * Math.PI / 5) - Math.PI / 2;
-          const radius = i % 2 === 0 ? pickup.radius : pickup.radius * 0.4;
-          const x = Math.cos(angle) * radius;
-          const y = Math.sin(angle) * radius;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Orbiting sparkle particles
-      for (let i = 0; i < 3; i++) {
-        const sparkleAngle = (Date.now() * 0.006) + (i * Math.PI * 2 / 3);
-        const sparkleX = Math.cos(sparkleAngle) * (pickup.radius + 6);
-        const sparkleY = Math.sin(sparkleAngle) * (pickup.radius + 6);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.7;
-        ctx.beginPath();
-        ctx.arc(sparkleX, sparkleY, 1, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
-  }
-
-  function drawParticles() {
-    for (let p of particles) {
-      if (p.type === 'ring') {
-        const expand = p.timer / p.maxTimer;
-        const radius = p.maxRadius * (1 - expand);
-
-        // Thicker outer ring
-        ctx.strokeStyle = colorAlpha(p.color, 1 - expand);
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Inner ring at 0.5 opacity
-        ctx.strokeStyle = colorAlpha(p.color, (1 - expand) * 0.5);
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, radius * 0.5, 0, Math.PI * 2);
-        ctx.stroke();
-      } else {
-        const alpha = p.timer / p.maxTimer;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 5;
-
-        // Vary between square and circle
-        const isSquare = Math.random() > 0.5;
-        if (isSquare) {
-          // Rotated square (diamond)
-          ctx.save();
-          ctx.translate(p.x, p.y);
-          ctx.rotate(Math.PI / 4);
-          ctx.fillRect(-p.radius, -p.radius, p.radius * 2, p.radius * 2);
-          ctx.restore();
-        } else {
-          // Circle
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Motion blur effect
-        ctx.globalAlpha = alpha * 0.5;
-        ctx.fillStyle = p.color;
-        const blurX = p.x - (p.vx || 0) * 0.016;
-        const blurY = p.y - (p.vy || 0) * 0.016;
-
-        if (isSquare) {
-          ctx.save();
-          ctx.translate(blurX, blurY);
-          ctx.rotate(Math.PI / 4);
-          ctx.fillRect(-p.radius, -p.radius, p.radius * 2, p.radius * 2);
-          ctx.restore();
-        } else {
-          ctx.beginPath();
-          ctx.arc(blurX, blurY, p.radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        ctx.shadowBlur = 0;
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  function drawHUD() {
-    const ship = SHIPS[selectedShipIndex];
-
-    // HP bar - Rounded rectangle with gradient
-    const hpPercent = Math.max(0, Math.min(1, player.hp / player.maxHp));
-    const hpColor = hpPercent > 0.3 ? '#00ff00' : hpPercent > 0 ? '#ffaa00' : '#ff0000';
-
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    const hpBgPath = rrPath(10, 8, 100, 16, 4);
-    ctx.fill(hpBgPath);
-
-    // Fill with gradient
-    const hpGrad = ctx.createLinearGradient(10, 8, 10 + 100, 8);
-    hpGrad.addColorStop(0, '#00ff00');
-    hpGrad.addColorStop(0.5, '#ffaa00');
-    hpGrad.addColorStop(1, '#ff0000');
-    ctx.fillStyle = hpGrad;
-    const hpFillPath = rrPath(10, 8, 100 * hpPercent, 16, 4);
-    ctx.fill(hpFillPath);
-
-    // Border
-    ctx.strokeStyle = hpColor;
-    ctx.lineWidth = 1.5;
-    ctx.stroke(hpBgPath);
-
-    // Inner highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-    const hpHighlightPath = rrPath(11, 9, 98, 6, 3);
-    ctx.stroke(hpHighlightPath);
-
-    // HP label
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText(`HP: ${player.hp}/${player.maxHp}`, 115, 17);
-
-    // Score - Larger, gold with shadow
-    ctx.fillStyle = '#ccaa44';
-    ctx.shadowColor = '#ccaa44';
-    ctx.shadowBlur = 8;
-    ctx.font = 'bold 16px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${Math.floor(score)}`, CANVAS_WIDTH - 10, 20);
-    ctx.shadowBlur = 0;
-
-    // Wave indicator with biome color
-    const biome = getCurrentBiome();
-    ctx.fillStyle = '#00ccff';
-    ctx.font = 'bold 12px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(`WAVE ${wave}`, CANVAS_WIDTH - 10, 40);
-
-    // Combo display - Pulsing with size scaling
-    if (combo > 0) {
-      const comboFontSize = Math.min(28, 14 + combo * 0.3);
-      ctx.fillStyle = combo >= 20 ? '#ff0000' : '#ffaa00';
-      ctx.font = `bold ${comboFontSize}px Arial`;
-      ctx.textAlign = 'center';
-      ctx.shadowColor = ctx.fillStyle;
-      const pulse = Math.sin(Date.now() * 0.008) * 8 + 2;
-      ctx.shadowBlur = pulse;
-      ctx.fillText(`COMBO x${combo}`, CANVAS_WIDTH / 2, 30);
-      ctx.shadowBlur = 0;
-    }
-
-    // XP bar - Thin elegant bar at bottom
-    const xpPercent = Math.max(0, Math.min(1, xp / xpNeeded));
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(10, CANVAS_HEIGHT - 12, 100, 6);
-
-    const xpGrad = ctx.createLinearGradient(10, CANVAS_HEIGHT - 12, 110, CANVAS_HEIGHT - 12);
-    xpGrad.addColorStop(0, '#aa88ff');
-    xpGrad.addColorStop(1, '#ff88ff');
-    ctx.fillStyle = xpGrad;
-    ctx.fillRect(10, CANVAS_HEIGHT - 12, 100 * xpPercent, 6);
-
-    ctx.strokeStyle = '#aa88ff';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(10, CANVAS_HEIGHT - 12, 100, 6);
-
-    // Kill counter
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Kills: ${enemiesKilled}`, 10, CANVAS_HEIGHT - 18);
-
-    // Gold counter
-    ctx.fillStyle = '#ccaa44';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Gold: ${Math.floor(gold || 0)}`, 70, CANVAS_HEIGHT - 18);
-
-    // Weapon indicator
-    ctx.fillStyle = '#00ccff';
-    ctx.font = '11px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(WEAPONS[player.weapon].name, CANVAS_WIDTH - 10, CANVAS_HEIGHT - 18);
-
-    // Achievement toast
-    if (achievementToast) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillRect(0, CANVAS_HEIGHT - 35, CANVAS_WIDTH, 30);
-
-      ctx.fillStyle = '#ffff00';
-      ctx.font = 'bold 12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(achievementToast.text, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 12);
-    }
-
-    // Virtual joystick overlay (touch controls)
-    if (joystickVisible && touchActive) {
-      // Outer ring
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(touchStartX, touchStartY, 50, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Inner thumb
-      const dx = touchCurrentX - touchStartX;
-      const dy = touchCurrentY - touchStartY;
-      const dist = Math.min(Math.hypot(dx, dy), 50);
-      const angle = Math.atan2(dy, dx);
-      const thumbX = touchStartX + Math.cos(angle) * dist;
-      const thumbY = touchStartY + Math.sin(angle) * dist;
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.beginPath();
-      ctx.arc(thumbX, thumbY, 15, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Screen pulse for high combo
-    if (combo >= 20) {
-      const pulse = Math.sin(Date.now() * 0.01) * 0.1 + 0.1;
-      ctx.fillStyle = `rgba(255, 255, 0, ${pulse * 0.1})`;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    }
-  }
-
-  function drawMenu() {
-    ctx.fillStyle = '#050510';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    drawNebulaBackground();
-
-    // Floating particle motes in menu
-    for (let i = 0; i < 12; i++) {
-      const seed = Math.sin(i * 12.9898) * 43758.5453;
-      const moteX = (seed - Math.floor(seed)) * CANVAS_WIDTH;
-      const moteY = ((Math.sin(i * 78.233 + seed) * 0.5 + 0.5) * CANVAS_HEIGHT + Date.now() * 0.01 * (i * 0.005)) % CANVAS_HEIGHT;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.beginPath();
-      ctx.arc(moteX, moteY, 0.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Title "NOVA BREACH" with pulsing cyan glow
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 38px Arial';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#00ccff';
-    const titlePulse = Math.sin(Date.now() * 0.006) * 7 + 15;
-    ctx.shadowBlur = titlePulse;
-    ctx.fillText('NOVA BREACH', CANVAS_WIDTH / 2, 80);
-    ctx.shadowBlur = 0;
-
-    // Subtitle
-    ctx.fillStyle = '#666666';
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText('DELUXE EDITION', CANVAS_WIDTH / 2, 98);
-
-    if (screen === 'main') {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`High Score: ${Math.floor(highScore)}`, CANVAS_WIDTH / 2, 130);
-
-      drawButton(ctx, CANVAS_WIDTH / 2, 160, 150, 40, 'PLAY', '#00ccff');
-      drawButton(ctx, CANVAS_WIDTH / 2, 210, 150, 40, 'SHIPS', '#aa88ff');
-      drawButton(ctx, CANVAS_WIDTH / 2, 260, 150, 40, 'DAILY', '#ffaa44');
-      drawButton(ctx, CANVAS_WIDTH / 2, 310, 150, 40, 'ACHIEVEMENTS', '#88ff00');
-
-      // Prestige info
-      ctx.fillStyle = '#ccaa44';
-      ctx.font = '12px Arial';
-      ctx.fillText(`Prestige: ${prestigeLevel}`, CANVAS_WIDTH / 2, 370);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '11px Arial';
-      ctx.fillText('M: Toggle Music', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
-    } else if (screen === 'ships') {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('SELECT SHIP', CANVAS_WIDTH / 2, 110);
-
-      let yPos = 160;
-      for (let i = 0; i < SHIPS.length; i++) {
-        const ship = SHIPS[i];
-        const color = i === selectedShipIndex ? '#00ff00' : ship.unlocked ? '#00ccff' : '#888888';
-
-        ctx.fillStyle = color;
-        ctx.font = ship.unlocked ? 'bold 14px Arial' : '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(ship.name + (i === selectedShipIndex ? ' ✓' : ''), CANVAS_WIDTH / 2, yPos);
-
-        if (!ship.unlocked) {
-          ctx.fillStyle = '#ffaa00';
-          ctx.font = '11px Arial';
-          ctx.fillText(`Cost: ${ship.cost}G`, CANVAS_WIDTH / 2, yPos + 20);
-        }
-
-        yPos += 50;
-      }
-
-      drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 40, 150, 35, 'BACK', '#aa88ff');
-    } else if (screen === 'achievements') {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('ACHIEVEMENTS', CANVAS_WIDTH / 2, 100);
-
-      let yPos = 140;
-      for (let i = 0; i < Math.min(5, ACHIEVEMENTS.length); i++) {
-        const ach = ACHIEVEMENTS[i];
-        ctx.fillStyle = ach.unlocked ? '#00ff00' : '#888888';
-        ctx.font = 'bold 11px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText((ach.unlocked ? '✓ ' : '✗ ') + ach.name, 20, yPos);
-
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '10px Arial';
-        ctx.fillText(ach.desc, 20, yPos + 13);
-        yPos += 35;
-      }
-
-      drawButton(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 40, 150, 35, 'BACK', '#aa88ff');
-    } else if (screen === 'daily') {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('DAILY CHALLENGE', CANVAS_WIDTH / 2, 100);
-
-      ctx.fillStyle = '#ffaa00';
-      ctx.font = 'bold 18px Arial';
-      ctx.fillText(dailyChallenge.name, CANVAS_WIDTH / 2, 160);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px Arial';
-      ctx.fillText(dailyChallenge.desc, CANVAS_WIDTH / 2, 190);
-
-      ctx.fillStyle = '#ccaa44';
-      ctx.font = 'bold 12px Arial';
-      ctx.fillText(`Best: ${Math.floor(dailyHighScore)}`, CANVAS_WIDTH / 2, 250);
-
-      drawButton(ctx, CANVAS_WIDTH / 2, 310, 150, 40, 'PLAY DAILY', '#ffaa44');
-      drawButton(ctx, CANVAS_WIDTH / 2, 380, 150, 40, 'BACK', '#aa88ff');
-    }
-  }
-
-  function drawDeathScreen() {
-    // Semi-transparent dark overlay with subtle red tint
-    ctx.fillStyle = 'rgba(20, 0, 0, 0.85)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // "GAME OVER" with chromatic aberration effect
-    const aberrationAmount = 2;
-    ctx.font = 'bold 40px Arial';
-    ctx.textAlign = 'center';
-
-    // Red channel (shifted left)
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
-    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 - aberrationAmount, 150);
-
-    // Cyan channel (shifted right)
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
-    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2 + aberrationAmount, 150);
-
-    // White text on top (centered)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 150);
-
-    // Stats in rounded dark boxes
-    const statBoxY = [210, 240, 270, 300];
-    const statTexts = [
-      `Score: ${Math.floor(score)}`,
-      `Wave: ${wave}`,
-      `Gold: ${Math.floor(goldEarned)}G`,
-      `Enemies Killed: ${enemiesKilled}`
-    ];
-
-    ctx.font = 'bold 14px Arial';
-    for (let i = 0; i < statTexts.length; i++) {
-      const y = statBoxY[i];
-      // Draw stat box background
-      const boxW = 200;
-      const boxH = 20;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      const statPath = rrPath(CANVAS_WIDTH / 2 - boxW / 2, y - boxH / 2, boxW, boxH, 4);
-      ctx.fill(statPath);
-
-      ctx.strokeStyle = 'rgba(100, 100, 150, 0.5)';
-      ctx.lineWidth = 1;
-      ctx.stroke(statPath);
-
-      // Draw text
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.fillText(statTexts[i], CANVAS_WIDTH / 2, y);
-    }
-
-    // High score notification
-    if (score > highScore) {
-      ctx.fillStyle = '#ffff00';
-      ctx.font = 'bold 16px Arial';
-      ctx.shadowColor = '#ffaa00';
-      ctx.shadowBlur = 12;
-      ctx.fillText('NEW HIGH SCORE!', CANVAS_WIDTH / 2, 350);
-      ctx.shadowBlur = 0;
-    }
-
-    drawButton(ctx, CANVAS_WIDTH / 2, 410, 150, 40, 'CONTINUE', '#00ccff');
-    drawButton(ctx, CANVAS_WIDTH / 2, 470, 150, 40, 'MENU', '#aa88ff');
-  }
-
-  function drawUpgradeScreen() {
-    // Dark overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // "CHOOSE UPGRADE" with glow
-    ctx.fillStyle = '#00ccff';
-    ctx.font = 'bold 22px Arial';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#00ccff';
-    ctx.shadowBlur = 12;
-    ctx.fillText('CHOOSE UPGRADE', CANVAS_WIDTH / 2, 60);
-    ctx.shadowBlur = 0;
-
-    if (upgradeSelection && upgradeSelection.upgrades.length > 0) {
-      let yPos = 140;
-      for (let i = 0; i < upgradeSelection.upgrades.length; i++) {
-        const upgrade = upgradeSelection.upgrades[i];
-        const isSelected = i === selectedUpgradeIndex;
-
-        // Upgrade card with colored left accent bar
-        const cardPath = rrPath(30, yPos - 20, CANVAS_WIDTH - 60, 50, 8);
-        ctx.fillStyle = isSelected ? 'rgba(100, 200, 255, 0.4)' : 'rgba(100, 100, 150, 0.25)';
-        ctx.fill(cardPath);
-
-        // Left accent bar
-        const accentColor = isSelected ? '#00ff00' : '#00ccff';
-        ctx.fillStyle = accentColor;
-        ctx.fillRect(30, yPos - 20, 4, 50);
-
-        // Border
-        ctx.strokeStyle = accentColor;
-        ctx.lineWidth = isSelected ? 2 : 1;
-        ctx.globalAlpha = isSelected ? 1 : 0.6;
-        ctx.stroke(cardPath);
-        ctx.globalAlpha = 1;
-
-        // Scale up selected card slightly
-        if (isSelected) {
-          ctx.strokeStyle = accentColor;
-          ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.3;
-          const expandedPath = rrPath(25, yPos - 25, CANVAS_WIDTH - 50, 60, 8);
-          ctx.stroke(expandedPath);
-          ctx.globalAlpha = 1;
-        }
-
-        // Upgrade name
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(upgrade.name, 50, yPos);
-
-        // Upgrade description
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '11px Arial';
-        ctx.fillText(upgrade.desc, 50, yPos + 18);
-
-        yPos += 70;
-      }
-    }
-
-    // Instructions
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '11px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('Tap to select or use Arrow keys + Space', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
-  }
-
-  // ============================================================================
-  // UPDATE LOGIC
-  // ============================================================================
-  function updatePlayer(dt) {
-    const ship = SHIPS[selectedShipIndex];
-    const mods = ship.statMods;
-    const moveSpeed = player.speed * mods.speedMul * dt;
-
-    player.vx = 0;
-    player.vy = 0;
-
-    if (keys['ArrowLeft'] || keys['a']) player.vx = -moveSpeed * 2;
-    if (keys['ArrowRight'] || keys['d']) player.vx = moveSpeed * 2;
-    if (keys['ArrowUp'] || keys['w']) player.vy = -moveSpeed * 2;
-    if (keys['ArrowDown'] || keys['s']) player.vy = moveSpeed * 2;
-
-    // Touch/virtual joystick input
-    if (touchActive) {
-      const dx = touchCurrentX - touchStartX;
-      const dy = touchCurrentY - touchStartY;
-      const dist = Math.hypot(dx, dy);
-      const deadZone = 10;
-      if (dist > deadZone) {
-        const normalized = Math.min(dist, 60) / 60;
-        player.vx = (dx / dist) * moveSpeed * 2 * normalized;
-        player.vy = (dy / dist) * moveSpeed * 2 * normalized;
-      }
-    }
-
-    player.x = Math.max(player.radius, Math.min(CANVAS_WIDTH - player.radius, player.x + player.vx));
-    player.y = Math.max(player.radius, Math.min(CANVAS_HEIGHT - player.radius, player.y + player.vy));
-
-    player.fireTimer += dt;
-    const fireRate = WEAPONS[player.weapon].fireRate * mods.fireMul * (activeDailyMod?.mod.alwaysRapid ? 0.5 : 1);
-    const fireInterval = 1 / fireRate;
-
-    if (player.fireTimer >= fireInterval) {
-      const weapon = WEAPONS[player.weapon];
-      if (weapon.bulletSpeed > 0) {
-        const angle = -Math.PI / 2;
-        const vx = Math.cos(angle) * weapon.bulletSpeed;
-        const vy = Math.sin(angle) * weapon.bulletSpeed;
-        spawnPlayerBullet(player.x, player.y, vx, vy, weapon.bulletDamage * mods.damageMul, 'standard');
-
-        if (runUpgrades.includes('reargun')) {
-          spawnPlayerBullet(player.x, player.y, -vx, -vy, weapon.bulletDamage * mods.damageMul * 0.5, 'standard');
-        }
-        if (runUpgrades.includes('sidegun')) {
-          spawnPlayerBullet(player.x, player.y, Math.cos(angle + Math.PI / 4) * weapon.bulletSpeed, Math.sin(angle + Math.PI / 4) * weapon.bulletSpeed, weapon.bulletDamage * mods.damageMul * 0.5, 'standard');
-          spawnPlayerBullet(player.x, player.y, Math.cos(angle - Math.PI / 4) * weapon.bulletSpeed, Math.sin(angle - Math.PI / 4) * weapon.bulletSpeed, weapon.bulletDamage * mods.damageMul * 0.5, 'standard');
-        }
-      }
-      player.fireTimer = 0;
-    }
-
-    player.dashCooldown = Math.max(0, player.dashCooldown - dt);
-    player.shield = Math.max(0, player.shield - dt * 0.5);
-    if (player.invulnTimer > 0) player.invulnTimer -= dt;
-
-    if (runUpgrades.includes('shieldgen') && player.shield <= 0) {
-      player.shield = 100;
-    }
-
-    comboTimer = Math.max(0, comboTimer - dt);
-    if (comboTimer <= 0) combo = 0;
-  }
-
-  function updateEnemies(dt) {
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const e = enemies[i];
-      e.patternTime += dt;
-      e.worldTime += dt;
-      e.flashTimer = Math.max(0, e.flashTimer - dt);
-
-      const moveSpeed = e.speed * dt;
-
-      // Movement patterns
-      if (e.movementPattern === 'sine') {
-        e.x += Math.sin(e.patternTime * 3) * moveSpeed;
-        e.vy = 60 + Math.sin(e.patternTime * 4) * 20;
-      } else if (e.movementPattern === 'figure8') {
-        e.x += Math.sin(e.patternTime * 2) * moveSpeed;
-        e.vy = 60 + Math.sin(e.patternTime * 4) * 30;
-      } else if (e.movementPattern === 'divebomb') {
-        if (e.patternTime < 1.5) {
-          e.vy = 200;
-        } else if (e.patternTime < 3.0) {
-          e.vy = -150;
-        } else {
-          e.patternTime = 0;
-        }
-      } else if (e.movementPattern === 'orbit') {
-        const angle = e.patternTime * 2 + (e.formationData.angle || 0);
-        const orbitRadius = 60;
-        e.x = CANVAS_WIDTH / 2 + Math.cos(angle) * orbitRadius;
-        e.y = 120 + Math.sin(angle) * orbitRadius;
-      } else if (e.movementPattern === 'strafe') {
-        const dir = e.formationData.sweepDir || 1;
-        e.x += dir * moveSpeed * 2;
-      }
-
-      e.y += e.vy * dt;
-
-      // Clamp movement
-      e.x = Math.max(0, Math.min(CANVAS_WIDTH, e.x));
-      e.y = Math.max(0, Math.min(CANVAS_HEIGHT, e.y));
-
-      // Firing
-      e.shootCooldown = Math.max(0, e.shootCooldown - dt);
-      if (e.shootCooldown <= 0) {
-        const angle = Math.atan2(player.y - e.y, player.x - e.x);
-        spawnEnemyBullet(e.x, e.y, angle, e.bulletDamage, e.color);
-        e.shootCooldown = 1 / e.fireRate;
-      }
-
-      // Boss phases
-      if (e.type === 'boss') {
-        const hpRatio = e.hp / e.maxHp;
-        if (hpRatio < 0.66 && e.bossPhase === 0) {
-          e.bossPhase = 1;
-          bossPhaseChangeTimer = 0.3;
-          triggerFlash('#ff0000', 15);
-          e.fireRate *= 1.5;
-        }
-        if (hpRatio < 0.33 && e.bossPhase === 1) {
-          e.bossPhase = 2;
-          bossPhaseChangeTimer = 0.3;
-          triggerFlash('#ffff00', 15);
-          e.fireRate *= 1.5;
-        }
-      }
-
-      if (e.hp <= 0) {
-        enemies.splice(i, 1);
-        waveEnemiesRemaining--;
-        const points = e.points * getComboMul();
-        score += points;
-        gold += e.goldDrop * (activeDailyMod?.mod.goldMul || 1.0);
-        goldEarned += e.goldDrop;
-        addScorePopup(e.x, e.y, '+' + Math.floor(points), '#ffff00', 14);
-
-        combo++;
-        maxCombo = Math.max(maxCombo, combo);
-        comboTimer = COMBO_TIMEOUT;
-        lastKillTime = 0;
-        enemiesKilled++;
-
-        spawnExplosion(e.x, e.y, 20, e.color);
-        playExplosionSound(e.type === 'boss');
-
-        if (e.type === 'boss') {
-          bossKilled = true;
-          triggerFlash('#ffff00', 30);
-          triggerShake(8, 15);
-          unlockAchievement('boss_slayer');
-          score += 1000;
-          spawnPickup(e.x, e.y, 'gold');
-        }
-
-        if (Math.random() < 0.3) {
-          spawnPickup(e.x, e.y, 'gold');
-        }
-        if (Math.random() < 0.1) {
-          spawnPickup(e.x, e.y, 'xp');
-        }
-      }
-    }
-
-    if (waveEnemiesRemaining <= 0 && gameState === 'play' && !nextWaveTimer) {
-      nextWaveTimer = 2;
-    }
-  }
-
-  function updateProjectiles(dt) {
-    for (let i = playerBullets.length - 1; i >= 0; i--) {
-      const bullet = playerBullets[i];
-      bullet.x += bullet.vx * dt;
-      bullet.y += bullet.vy * dt;
-
-      let hit = false;
-      for (let j = enemies.length - 1; j >= 0; j--) {
-        const e = enemies[j];
-        const dist = Math.hypot(e.x - bullet.x, e.y - bullet.y);
-        if (dist < e.radius + bullet.radius) {
-          e.hp -= bullet.damage;
-          e.flashTimer = 0.1;
-          hit = true;
-          break;
-        }
-      }
-
-      if (hit || bullet.x < 0 || bullet.x > CANVAS_WIDTH || bullet.y < 0 || bullet.y > CANVAS_HEIGHT) {
-        playerBullets.splice(i, 1);
-      }
-    }
-
-    for (let i = enemyBullets.length - 1; i >= 0; i--) {
-      const bullet = enemyBullets[i];
-      bullet.x += bullet.vx * dt;
-      bullet.y += bullet.vy * dt;
-      bullet.age = (bullet.age || 0) + dt;
-
-      const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
-      if (dist < player.radius + bullet.radius && player.invulnTimer <= 0) {
-        if (player.shield > 0) {
-          player.shield -= bullet.damage * 30;
-        } else {
-          player.hp -= bullet.damage;
-          player.invulnTimer = 1.5; // 1.5 seconds of invulnerability
-        }
-        enemyBullets.splice(i, 1);
-        triggerFlash('#ff0000', 5);
-      } else if (bullet.x < 0 || bullet.x > CANVAS_WIDTH || bullet.y < 0 || bullet.y > CANVAS_HEIGHT) {
-        enemyBullets.splice(i, 1);
-      }
-    }
-  }
-
-  function updatePickups(dt) {
-    for (let i = pickups.length - 1; i >= 0; i--) {
-      const pickup = pickups[i];
-      pickup.timer -= dt;
-
-      const dist = Math.hypot(player.x - pickup.x, player.y - pickup.y);
-      if (dist < player.magnetRange) {
-        const angle = Math.atan2(player.y - pickup.y, player.x - pickup.x);
-        const speed = 300 * dt;
-        pickup.x += Math.cos(angle) * speed;
-        pickup.y += Math.sin(angle) * speed;
-      }
-
-      if (dist < player.radius + pickup.radius) {
-        if (pickup.type === 'gold') {
-          gold += 10;
-          goldEarned += 10;
-          totalGoldEarned += 10;
-          addScorePopup(pickup.x, pickup.y, '+10G', '#ffcc00', 12);
-        } else if (pickup.type === 'xp') {
-          xp += 15;
-          addScorePopup(pickup.x, pickup.y, '+XP', '#aa88ff', 12);
-          while (xp >= xpNeeded) {
-            xp -= xpNeeded;
-            level++;
-            xpNeeded = Math.floor(xpNeeded * 1.2);
-            unlockAchievement('max_level');
-          }
-        }
-        itemsCollected++;
-        pickups.splice(i, 1);
-      } else if (pickup.timer <= 0) {
-        pickups.splice(i, 1);
-      }
-    }
-  }
-
-  function updateParticles(dt) {
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.timer -= dt;
-
-      if (p.type === 'debris') {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.vy += 300 * dt;
-      }
-
-      if (p.timer <= 0) {
-        particles.splice(i, 1);
-      }
-    }
-  }
-
-  function updateUI() {
-    if (achievementToast) {
-      achievementToast.timer--;
-      if (achievementToast.timer <= 0) {
-        achievementToast = null;
-      }
-    }
-
-    if (waveAnnouncement) {
-      waveAnnouncement.timer--;
-      if (waveAnnouncement.timer <= 0) {
-        waveAnnouncement = null;
-      }
-    }
-
-    for (let i = scorePopups.length - 1; i >= 0; i--) {
-      const popup = scorePopups[i];
-      popup.timer--;
-      popup.y -= 50 * (FIXED_DT / 1000);
-      if (popup.timer <= 0) {
-        scorePopups.splice(i, 1);
-      }
-    }
-
-    lastKillTime += FIXED_DT / 1000;
-    pacifistTimer = lastKillTime;
-
-    if (pacifistTimer >= 30) {
-      unlockAchievement('pacifist');
-    }
-
-    if (score >= 100000) {
-      unlockAchievement('millionaire');
-    }
-
-    if (wave >= 10) {
-      unlockAchievement('wave_10');
-    }
-
-    if (wave >= 20) {
-      unlockAchievement('unstoppable');
-    }
-
-    if (combo >= 20) {
-      unlockAchievement('combo_king');
-    }
-
-    if (enemiesKilled >= 1) {
-      unlockAchievement('first_blood');
-    }
-
-    if (totalGoldEarned >= 1000) {
-      unlockAchievement('gold_rush');
-    }
-
-    if (itemsCollected >= 100) {
-      unlockAchievement('collector');
-    }
-
-    if (wave >= 5 && player.hp === 1) {
-      unlockAchievement('glass_cannon');
-    }
-
-    if (dashesUsed >= 50) {
-      unlockAchievement('speed_demon');
-    }
-  }
-
-  function update(dt) {
-    if (gameState === 'play') {
-      updatePlayer(dt);
-      updateEnemies(dt);
-      updateProjectiles(dt);
-      updatePickups(dt);
-      updateParticles(dt);
-      updateUI();
-
-      timeSurvived += dt;
-
-      if (player.hp <= 0) {
-        gameState = 'dead';
-        highScore = Math.max(highScore, score);
-        dailyHighScore = Math.max(dailyHighScore, score);
-        savePersistentData();
-      }
-
-      if (nextWaveTimer !== null) {
-        nextWaveTimer -= dt;
-        if (nextWaveTimer <= 0) {
-          wave++;
-          showUpgradeSelection();
-          gameState = 'upgrade';
-          nextWaveTimer = null;
-        }
-      }
-
-      if (shakeTimer > 0) {
-        shakeTimer--;
-        shakeX = (Math.random() - 0.5) * shakeIntensity * 2;
-        shakeY = (Math.random() - 0.5) * shakeIntensity * 2;
-      } else {
-        shakeX = 0;
-        shakeY = 0;
-      }
-
-      if (flashTimer > 0) {
-        flashTimer--;
-      }
-    } else if (gameState === 'upgrade') {
-      // Wait for selection
-    }
-  }
-
-  // ============================================================================
-  // INPUT
-  // ============================================================================
-  let keys = {};
-
-  document.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
-
-    if (e.key === 'm' || e.key === 'M') {
-      audioMuted = !audioMuted;
-      if (!audioMuted) {
-        initAudio();
-        startProceduralMusic();
-      }
-    }
-
-    if (e.key === '1') switchWeapon('blaster');
-    if (e.key === '2') switchWeapon('laser');
-    if (e.key === '3') switchWeapon('missiles');
-
-    if (e.key === 'Enter' || e.key === ' ') {
-      if (gameState === 'menu') {
-        if (screen === 'main') {
-          gameState = 'play';
-          wave = 1;
-          score = 0;
-          combo = 0;
-          maxCombo = 0;
-          enemiesKilled = 0;
-          itemsCollected = 0;
-          timeSurvived = 0;
-          goldEarned = 0;
-          dashesUsed = 0;
-          pacifistTimer = 0;
-          lastKillTime = 0;
-          runUpgrades = [];
-          playerBullets = [];
-          enemyBullets = [];
-          pickups = [];
-          particles = [];
-          enemies = [];
-
-          resetPlayer();
-          activeDailyMod = null;
-          recordPlayToday();
-
-          spawnWave(1);
-          startProceduralMusic();
-        }
-      } else if (gameState === 'dead') {
-        gameState = 'menu';
-        screen = 'main';
-      } else if (gameState === 'upgrade') {
-        if (selectedUpgradeIndex >= 0 && upgradeSelection) {
-          const upgrade = upgradeSelection.upgrades[selectedUpgradeIndex];
-          applyUpgrade(upgrade.id);
-          spawnWave(wave);
-          gameState = 'play';
-        }
-      }
-    }
-
-    if (e.key === 'Escape') {
-      if (gameState === 'play') {
-        gameState = 'menu';
-        screen = 'main';
-      }
-    }
-
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      if (gameState === 'upgrade') {
-        const dir = e.key === 'ArrowUp' ? -1 : 1;
-        selectedUpgradeIndex = (selectedUpgradeIndex + dir + 3) % 3;
-      }
-    }
-  });
-
-  document.addEventListener('keyup', (e) => {
-    keys[e.key] = false;
-  });
-
-  // ============================================================================
-  // TOUCH CONTROLS FOR MOBILE GAMEPLAY
-  // ============================================================================
-  let touchActive = false;
-  let touchStartX = 0, touchStartY = 0;
-  let touchCurrentX = 0, touchCurrentY = 0;
-  let joystickVisible = false;
-
-  function startNewGame(dailyMod) {
-    gameState = 'play';
-    wave = 1;
-    score = 0;
-    combo = 0;
-    maxCombo = 0;
-    enemiesKilled = 0;
-    itemsCollected = 0;
-    timeSurvived = 0;
-    goldEarned = 0;
-    dashesUsed = 0;
-    runUpgrades = [];
-    playerBullets = [];
-    enemyBullets = [];
-    pickups = [];
-    particles = [];
-    enemies = [];
-
-    resetPlayer();
-    activeDailyMod = dailyMod;
-    recordPlayToday();
-
-    spawnWave(1);
-    initAudio();
-    startProceduralMusic();
-  }
-
-  function handleClick(x, y) {
-    initAudio();
-
-    if (gameState === 'menu') {
-      if (screen === 'main') {
-        if (Math.abs(y - 160) < 20) {
-          startNewGame(null);
-        } else if (Math.abs(y - 210) < 20) {
-          screen = 'ships';
-          playUISound('click');
-        } else if (Math.abs(y - 260) < 20) {
-          screen = 'achievements';
-          playUISound('click');
-        } else if (Math.abs(y - 310) < 20) {
-          screen = 'daily';
-          playUISound('click');
-        }
-      } else if (screen === 'ships') {
-        for (let i = 0; i < SHIPS.length; i++) {
-          if (Math.abs(y - (160 + i * 50)) < 25) {
-            if (SHIPS[i].unlocked) {
-              selectedShipIndex = i;
-              playUISound('click');
-            } else if (gold >= SHIPS[i].cost) {
-              gold -= SHIPS[i].cost;
-              SHIPS[i].unlocked = true;
-              selectedShipIndex = i;
-              savePersistentData();
-              playUISound('click');
+        if (color.startsWith('#')) {
+            let hex = color.replace('#', '');
+            if (hex.length === 3) {
+                hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
             }
-          }
+            if (hex.length !== 6) {
+                return `rgba(255,255,255,${alpha})`;
+            }
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        } else if (color.startsWith('rgba')) {
+            return color.replace(/[\d.]+\)$/, `${alpha})`);
+        } else if (color.startsWith('rgb')) {
+            return color.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
         }
-        if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
-          screen = 'main';
-          playUISound('click');
-        }
-      } else if (screen === 'achievements') {
-        if (Math.abs(y - (CANVAS_HEIGHT - 40)) < 18) {
-          screen = 'main';
-          playUISound('click');
-        }
-      } else if (screen === 'daily') {
-        if (Math.abs(y - 310) < 20) {
-          startNewGame(dailyChallenge);
-        } else if (Math.abs(y - 380) < 20) {
-          screen = 'main';
-          playUISound('click');
-        }
-      }
-    } else if (gameState === 'dead') {
-      if (Math.abs(y - 410) < 20) {
-        // CONTINUE → restart game
-        startNewGame(null);
-        playUISound('click');
-      } else if (Math.abs(y - 470) < 20) {
-        // MENU
-        gameState = 'menu';
-        screen = 'main';
-        playUISound('click');
-      }
-    } else if (gameState === 'upgrade') {
-      // Click on upgrade cards
-      if (upgradeSelection && upgradeSelection.upgrades.length > 0) {
-        let yPos = 140;
-        for (let i = 0; i < upgradeSelection.upgrades.length; i++) {
-          if (y >= yPos - 20 && y <= yPos + 30) {
-            selectedUpgradeIndex = i;
-            const upgrade = upgradeSelection.upgrades[i];
-            applyUpgrade(upgrade.id);
-            spawnWave(wave);
-            gameState = 'play';
-            playUISound('click');
-            return;
-          }
-          yPos += 70;
-        }
-      }
-    }
-  }
-
-  canvas.addEventListener('click', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
-    const y = (e.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
-    handleClick(x, y);
-  }, { passive: false });
-
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const touch = e.touches[0];
-    const x = (touch.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
-    const y = (touch.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
-
-    if (gameState === 'play') {
-      // Start virtual joystick
-      touchActive = true;
-      touchStartX = x;
-      touchStartY = y;
-      touchCurrentX = x;
-      touchCurrentY = y;
-      joystickVisible = true;
-    } else {
-      handleClick(x, y);
-    }
-  }, { passive: false });
-
-  canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (!touchActive || gameState !== 'play') return;
-
-    const rect = canvas.getBoundingClientRect();
-    const touch = e.touches[0];
-    touchCurrentX = (touch.clientX - rect.left) * (CANVAS_WIDTH / rect.width);
-    touchCurrentY = (touch.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
-  }, { passive: false });
-
-  canvas.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    touchActive = false;
-    joystickVisible = false;
-  }, { passive: false });
-
-  canvas.addEventListener('touchcancel', (e) => {
-    touchActive = false;
-    joystickVisible = false;
-  }, { passive: false });
-
-  // ============================================================================
-  // MAIN LOOP
-  // ============================================================================
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-
-  function loop() {
-    let now = Date.now();
-    let delta = Math.min((now - lastTime) / 1000, 0.1);
-    lastTime = now;
-
-    let accumulator = delta;
-    let frames = 0;
-    while (accumulator >= FIXED_DT / 1000 && frames < MAX_DELTA_FRAMES) {
-      update(FIXED_DT / 1000);
-      accumulator -= FIXED_DT / 1000;
-      frames++;
+        return `rgba(255,255,255,${alpha})`;
     }
 
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.save();
-    ctx.translate(shakeX, shakeY);
-
-    if (gameState === 'menu') {
-      drawMenu();
-    } else if (gameState === 'play' || gameState === 'upgrade') {
-      drawNebulaBackground();
-      drawProjectiles();
-      drawEnemies();
-      drawParticles();
-      drawPickups();
-      drawPlayer();
-      drawHUD();
-
-      if (waveAnnouncement) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(0, CANVAS_HEIGHT / 2 - 40, CANVAS_WIDTH, 80);
-
-        ctx.fillStyle = '#00ccff';
-        ctx.font = 'bold 20px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(waveAnnouncement.text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
-
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '12px Arial';
-        ctx.fillText(waveAnnouncement.sub, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 15);
-      }
-
-      for (let popup of scorePopups) {
-        ctx.fillStyle = popup.color;
-        ctx.globalAlpha = popup.timer / popup.maxTimer;
-        ctx.font = `bold ${popup.size}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.fillText(popup.text, popup.x, popup.y);
-        ctx.globalAlpha = 1;
-      }
-
-      if (gameState === 'upgrade') {
-        drawUpgradeScreen();
-      }
-    } else if (gameState === 'dead') {
-      drawNebulaBackground();
-      drawDeathScreen();
+    function rrPath(x, y, w, h, r) {
+        const path = new Path2D();
+        r = Math.min(r, w / 2, h / 2);
+        path.moveTo(x + r, y);
+        path.lineTo(x + w - r, y);
+        path.arcTo(x + w, y, x + w, y + r, r);
+        path.lineTo(x + w, y + h - r);
+        path.arcTo(x + w, y + h, x + w - r, y + h, r);
+        path.lineTo(x + r, y + h);
+        path.arcTo(x, y + h, x, y + h - r, r);
+        path.lineTo(x, y + r);
+        path.arcTo(x, y, x + r, y, r);
+        path.closePath();
+        return path;
     }
 
-    if (flashTimer > 0) {
-      ctx.globalAlpha = flashTimer / 30;
-      ctx.fillStyle = flashColor;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      ctx.globalAlpha = 1;
+    function getDailyChallenge() {
+        const challenges = ['double_time', 'no_dash', 'one_life', 'boss_rush', 'rapid_fire', 'double_gold', 'slow_mo', 'magnet'];
+        const dateStr = new Date().toISOString().split('T')[0];
+        const hash = dateStr.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0);
+        return challenges[Math.abs(hash) % challenges.length];
     }
 
-    ctx.restore();
+    function savePersistentData() {
+        const data = {
+            gold: gameState.gold,
+            deaths: gameState.deaths,
+            totalKills: gameState.totalKills,
+            playStreak: gameState.playStreak,
+            lastPlayDate: gameState.lastPlayDate,
+            achievements: gameState.achievements,
+            prestigeLevel: gameState.prestigeLevel,
+            highScore: window.highScore || 0,
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    }
 
-    requestAnimationFrame(loop);
-  }
+    function loadPersistentData() {
+        const data = localStorage.getItem(SAVE_KEY);
+        if (data) {
+            try {
+                const saved = JSON.parse(data);
+                gameState.gold = saved.gold || 0;
+                gameState.deaths = saved.deaths || 0;
+                gameState.totalKills = saved.totalKills || 0;
+                gameState.playStreak = saved.playStreak || 0;
+                gameState.lastPlayDate = saved.lastPlayDate;
+                gameState.achievements = saved.achievements || {};
+                gameState.prestigeLevel = saved.prestigeLevel || 0;
+                window.highScore = saved.highScore || 0;
 
-  // Initialize
-  loadPersistentData();
-  initAudio();
+                const today = new Date().toISOString().split('T')[0];
+                const lastDay = saved.lastPlayDate ? saved.lastPlayDate.split('T')[0] : null;
+                if (lastDay && lastDay !== today) {
+                    gameState.playStreak++;
+                } else if (!lastDay) {
+                    gameState.playStreak = 1;
+                }
+                gameState.lastPlayDate = new Date().toISOString();
+            } catch (e) {
+                console.error('Failed to load save:', e);
+            }
+        }
+        window.highScore = window.highScore || 0;
+        gameState.dailyChallenge = getDailyChallenge();
+    }
 
-  loop();
+    function declareAchievement(id) {
+        if (!gameState.achievements[id]) {
+            gameState.achievements[id] = true;
+            savePersistentData();
+            showToast(`Achievement Unlocked: ${ACHIEVEMENTS[id].name}`);
+        }
+    }
+
+    function showToast(text) {
+        gameState.messageText = text;
+        gameState.messageTimer = 180;
+    }
+
+    // ============================================================================
+    // AUDIO
+    // ============================================================================
+
+    function initAudio() {
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.warn('Web Audio API not supported');
+        }
+    }
+
+    function playSound(type, freq = 400, duration = 0.1) {
+        if (!audioContext || audioContext.state !== 'running') return;
+        try {
+            const now = audioContext.currentTime;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+
+            gain.gain.setValueAtTime(masterVolume * 0.7, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+            if (type === 'shoot') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.6, now + duration);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq + Math.random() * 100, now);
+            } else if (type === 'kill') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq * 1.5, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + duration);
+            } else if (type === 'pickup') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq * 1.2, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.8, now + duration);
+            }
+
+            osc.start(now);
+            osc.stop(now + duration);
+        } catch (e) {
+            // Silently fail if audio isn't available
+        }
+    }
+
+    // ============================================================================
+    // PLAYER CLASS
+    // ============================================================================
+
+    class Player {
+        constructor(ship) {
+            const stats = SHIP_STATS[ship];
+            this.ship = ship;
+            this.x = VIRTUAL_WIDTH / 2;
+            this.y = VIRTUAL_HEIGHT - 80;
+            this.vx = 0;
+            this.vy = 0;
+            this.speed = stats.speed;
+            this.fireRate = stats.fireRate;
+            this.fireCooldown = 0;
+            this.weapon = 0; // 0=blaster, 1=laser, 2=missile
+            this.damage = stats.damage;
+            this.hp = stats.hp;
+            this.maxHp = stats.hp;
+            this.magnet = stats.magnet;
+            this.shieldEnergy = 0;
+            this.shieldMax = 100;
+            this.shield = false;
+            this.invulnTimer = 0;
+            this.dashCooldown = 0;
+            this.dashEnergy = 100;
+            this.dashMax = 100;
+            this.upgrades = {
+                maxHp: 0,
+                fireRate: 0,
+                speed: 0,
+                damage: 0,
+                magnet: 0,
+                pierce: 0,
+                rearGun: false,
+                sideGuns: false,
+                shieldRegen: 0,
+                xpRange: 0,
+            };
+            this.distanceTraveled = 0;
+            this.damageDealt = 0;
+            this.pickupsCollected = 0;
+            this.shieldAngle = 0;
+            this.shipColor = { viper: '#00ffff', phantom: '#ff00ff', titan: '#ffff00', spectre: '#00ff88' }[ship] || '#0f0';
+            this.shipAccent = { viper: '#0088ff', phantom: '#ff0088', titan: '#ff8800', spectre: '#0088ff' }[ship] || '#00aa00';
+        }
+
+        update(keys, touchX, touchY, gameState) {
+            this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+            this.invulnTimer = Math.max(0, this.invulnTimer - dt);
+            this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+            this.shieldEnergy = Math.min(this.shieldMax, this.shieldEnergy + 5 * dt);
+
+            let ax = 0, ay = 0;
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) ax -= 1;
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) ax += 1;
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) ay -= 1;
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) ay += 1;
+
+            if (touchX !== null && touchY !== null) {
+                const dx = touchX - this.x;
+                const dy = touchY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 20) {
+                    ax = dx / Math.max(dist, 0.1);
+                    ay = dy / Math.max(dist, 0.1);
+                }
+            }
+
+            const mag = Math.sqrt(ax * ax + ay * ay);
+            if (mag > 0) {
+                ax /= mag;
+                ay /= mag;
+                this.vx = ax * this.speed * (1 + 0.5 * this.upgrades.speed);
+                this.vy = ay * this.speed * (1 + 0.5 * this.upgrades.speed);
+            } else {
+                this.vx *= 0.85;
+                this.vy *= 0.85;
+            }
+
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.x = clamp(this.x, 15, VIRTUAL_WIDTH - 15);
+            this.y = clamp(this.y, 15, VIRTUAL_HEIGHT - 15);
+
+            const prevX = this.x - this.vx * dt;
+            const prevY = this.y - this.vy * dt;
+            this.distanceTraveled += distance(prevX, prevY, this.x, this.y);
+
+            if (keys[' '] && this.dashCooldown <= 0 && this.dashEnergy > 30) {
+                this.dashEnergy -= 30;
+                this.dashCooldown = 0.5;
+                this.vx *= 2.5;
+                this.vy *= 2.5;
+                for (let i = 0; i < 12; i++) {
+                    particles.push({
+                        x: this.x + (Math.random() - 0.5) * 20,
+                        y: this.y + (Math.random() - 0.5) * 20,
+                        vx: (Math.random() - 0.5) * 300,
+                        vy: (Math.random() - 0.5) * 300,
+                        life: 0.3,
+                        color: '#0ff',
+                        size: Math.random() * 4 + 2,
+                    });
+                }
+            }
+            this.dashEnergy = Math.min(this.dashMax, this.dashEnergy + 30 * dt);
+        }
+
+        fire() {
+            if (this.fireCooldown > 0) return;
+            this.fireCooldown = 1 / (this.fireRate * (1 + 0.3 * this.upgrades.fireRate));
+
+            const fireRate = this.fireRate * (1 + 0.3 * this.upgrades.fireRate);
+            const speed = 400;
+            const damage = this.damage * (1 + 0.2 * this.upgrades.damage);
+
+            if (this.weapon === 0) { // Blaster
+                bullets.push({
+                    x: this.x,
+                    y: this.y - 15,
+                    vx: 0,
+                    vy: -speed,
+                    life: 3,
+                    type: 'blaster',
+                    damage: damage,
+                    piercing: this.upgrades.pierce,
+                    color: '#0f0',
+                    size: 5,
+                });
+                if (this.upgrades.sideGuns) {
+                    bullets.push({
+                        x: this.x - 10,
+                        y: this.y,
+                        vx: -speed * 0.3,
+                        vy: -speed * 0.95,
+                        life: 3,
+                        type: 'blaster',
+                        damage: damage * 0.6,
+                        piercing: this.upgrades.pierce,
+                        color: '#0f0',
+                        size: 5,
+                    });
+                    bullets.push({
+                        x: this.x + 10,
+                        y: this.y,
+                        vx: speed * 0.3,
+                        vy: -speed * 0.95,
+                        life: 3,
+                        type: 'blaster',
+                        damage: damage * 0.6,
+                        piercing: this.upgrades.pierce,
+                        color: '#0f0',
+                        size: 5,
+                    });
+                }
+                if (this.upgrades.rearGun) {
+                    bullets.push({
+                        x: this.x,
+                        y: this.y + 15,
+                        vx: 0,
+                        vy: speed * 0.5,
+                        life: 3,
+                        type: 'blaster',
+                        damage: damage * 0.5,
+                        piercing: this.upgrades.pierce,
+                        color: '#0f0',
+                        size: 5,
+                    });
+                }
+            } else if (this.weapon === 1) { // Laser
+                bullets.push({
+                    x: this.x,
+                    y: this.y - 15,
+                    vx: 0,
+                    vy: -speed,
+                    life: 2,
+                    type: 'laser',
+                    damage: damage * 0.7,
+                    piercing: 999,
+                    color: '#ff0',
+                    width: 6,
+                    size: 6,
+                });
+            } else if (this.weapon === 2) { // Missile
+                bullets.push({
+                    x: this.x,
+                    y: this.y - 15,
+                    vx: 0,
+                    vy: -speed * 0.6,
+                    life: 5,
+                    type: 'missile',
+                    damage: damage * 2,
+                    piercing: this.upgrades.pierce,
+                    color: '#f80',
+                    target: null,
+                    speed: speed * 0.6,
+                    size: 7,
+                });
+            }
+            playSound('shoot', 600 + Math.random() * 200, 0.08);
+        }
+
+        takeDamage(amount) {
+            if (this.invulnTimer > 0) return;
+            amount = Math.max(1, amount - (this.shield ? 30 : 0));
+            this.hp -= amount;
+            this.invulnTimer = 1.5;
+            this.shield = false;
+            gameState.screenShake = 0.3;
+            gameState.screenFlash = 0.15;
+            playSound('hit', 200, 0.1);
+        }
+
+        draw(ctx) {
+            try {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Engine exhaust
+                if (Math.abs(this.vx) > 10 || Math.abs(this.vy) > 10) {
+                    for (let i = 0; i < 3; i++) {
+                        const offset = i * 0.05;
+                        const scale = 1 - offset;
+                        particles.push({
+                            x: this.x + (Math.random() - 0.5) * 6,
+                            y: this.y + 12 + i * 4,
+                            vx: (Math.random() - 0.5) * 80 - this.vx * 0.3,
+                            vy: (Math.random() - 0.5) * 80 + 100,
+                            life: 0.2,
+                            color: Math.random() > 0.5 ? '#f80' : '#0ff',
+                            size: 3 + i,
+                        });
+                    }
+                }
+
+                // Flash on invuln
+                if (this.invulnTimer > 0 && Math.sin(this.invulnTimer * Math.PI * 8) > 0) {
+                    ctx.fillStyle = '#fff';
+                    ctx.globalAlpha = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -12);
+                    ctx.lineTo(8, 8);
+                    ctx.lineTo(0, 5);
+                    ctx.lineTo(-8, 8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+
+                // Engine flame (V3 style)
+                const flameLife = (Date.now() % 100) / 100;
+                const flameSize = 15 + Math.sin(Date.now() * 0.02) * 8;
+                const flameBrightness = 0.6 + Math.sin(Date.now() * 0.025) * 0.4;
+
+                const flameGrad = ctx.createLinearGradient(0, 8, 0, 8 + flameSize);
+                flameGrad.addColorStop(0, `rgba(255, 150, 0, ${flameBrightness})`);
+                flameGrad.addColorStop(0.5, `rgba(255, 100, 0, ${flameBrightness * 0.7})`);
+                flameGrad.addColorStop(1, `rgba(0, 200, 255, 0)`);
+
+                ctx.fillStyle = flameGrad;
+                ctx.beginPath();
+                ctx.moveTo(-4, 8);
+                ctx.lineTo(4, 8);
+                ctx.lineTo(2 + Math.sin(Date.now() * 0.03) * 2, 8 + flameSize);
+                ctx.lineTo(-2 + Math.sin(Date.now() * 0.025) * 2, 8 + flameSize);
+                ctx.closePath();
+                ctx.fill();
+
+                // Hull with gradient
+                const hullGrad = ctx.createLinearGradient(-8, -10, 8, 12);
+                hullGrad.addColorStop(0, this.shipColor);
+                hullGrad.addColorStop(0.5, this.shipAccent);
+                hullGrad.addColorStop(1, colorAlpha(this.shipColor, 0.3));
+
+                ctx.fillStyle = hullGrad;
+                ctx.beginPath();
+                ctx.moveTo(0, -12);
+                ctx.lineTo(-10, 12);
+                ctx.lineTo(0, 8);
+                ctx.lineTo(10, 12);
+                ctx.closePath();
+                ctx.fill();
+
+                // Cockpit glow
+                ctx.fillStyle = colorAlpha('#ffff00', 0.8);
+                ctx.beginPath();
+                ctx.arc(0, -2, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = colorAlpha('#ffffff', 0.5);
+                ctx.beginPath();
+                ctx.arc(0, -2, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Wing accents
+                ctx.strokeStyle = this.shipAccent;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(-8, 0);
+                ctx.lineTo(-10, 8);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(10, 8);
+                ctx.stroke();
+
+                // Shield
+                if (this.shield) {
+                    this.shieldAngle += 2;
+                    ctx.strokeStyle = colorAlpha(this.shipAccent, 0.8);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // Dash energy indicator
+                ctx.fillStyle = colorAlpha('#0ff', 0.4);
+                ctx.fillRect(-6, 12, 12, 2);
+                ctx.fillStyle = '#0ff';
+                ctx.fillRect(-6, 12, (this.dashEnergy / this.dashMax) * 12, 2);
+
+                ctx.restore();
+            } catch (e) {
+                console.error('Player draw error:', e);
+            }
+        }
+    }
+
+    // ============================================================================
+    // ENEMY CLASS
+    // ============================================================================
+
+    class Enemy {
+        constructor(type, x, y, waveNum) {
+            const stats = ENEMIES[type];
+            this.type = type;
+            this.x = x;
+            this.y = y;
+            this.vx = 0;
+            this.vy = 0;
+            this.hp = stats.hp + waveNum * 5;
+            this.maxHp = this.hp;
+            this.speed = stats.speed + waveNum * 5;
+            this.size = stats.size;
+            this.color = stats.color;
+            this.fireRate = stats.fireRate + waveNum * 0.1;
+            this.fireCooldown = Math.random() * 2;
+            this.score = stats.score + Math.floor(waveNum * 10);
+            this.angle = 0;
+            this.pattern = Math.random();
+            this.time = 0;
+            this.spin = 0;
+            this.accentColor = { drone: '#ff6600', scout: '#ffaa00', tank: '#00aa00', shooter: '#ffff00', bomber: '#cc00ff', boss: '#00ffff' }[type] || '#ff6600';
+            this.flashTime = 0;
+        }
+
+        update(gameState, waveTime) {
+            this.time += dt;
+            this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+            this.flashTime = Math.max(0, this.flashTime - dt);
+
+            const playerX = player ? player.x : VIRTUAL_WIDTH / 2;
+            const playerY = player ? player.y : VIRTUAL_HEIGHT / 2;
+
+            if (this.type === 'drone') {
+                this.vx = Math.sin(waveTime * 2 + this.x * 0.01) * this.speed;
+                this.vy = 60;
+            } else if (this.type === 'scout') {
+                this.spin += 0.1;
+                const figure8 = Math.sin(this.time * 3) * Math.cos(this.time * 1.5);
+                this.vx = figure8 * this.speed * 0.7;
+                this.vy = 80;
+            } else if (this.type === 'tank') {
+                const dx = playerX - this.x;
+                const dist = Math.sqrt(dx * dx + (playerY - this.y) * (playerY - this.y));
+                this.vx = (dx / Math.max(dist, 0.1)) * this.speed * 0.5;
+                this.vy = Math.sin(waveTime * 0.5 + this.x * 0.01) * this.speed * 0.3 + 40;
+            } else if (this.type === 'shooter') {
+                const dx = playerX - this.x;
+                const dy = playerY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 150) {
+                    this.vx = -(dx / Math.max(dist, 0.1)) * this.speed;
+                    this.vy = -(dy / Math.max(dist, 0.1)) * this.speed * 0.5;
+                } else {
+                    this.vx = (dx / Math.max(dist, 0.1)) * this.speed * 0.7;
+                    this.vy = (dy / Math.max(dist, 0.1)) * this.speed * 0.5;
+                }
+            } else if (this.type === 'bomber') {
+                const orbit = 80 + Math.sin(this.time * 2) * 40;
+                const angle = this.time + this.x * 0.01;
+                this.vx = Math.cos(angle) * orbit * 0.5;
+                this.vy = Math.sin(angle) * orbit * 0.3 + 30;
+            } else if (this.type === 'boss') {
+                const dx = playerX - this.x;
+                const dy = playerY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const target = dist < 180 ? 150 : 180;
+                this.vx = (dx / Math.max(dist, 0.1)) * (target < dist ? this.speed : -this.speed * 0.3);
+                this.vy = (dy / Math.max(dist, 0.1)) * (target < dist ? this.speed * 0.5 : -this.speed * 0.3);
+                this.vx = clamp(this.vx, -this.speed, this.speed);
+                this.vy = clamp(this.vy, -this.speed * 0.5, this.speed * 0.5);
+            }
+
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.x = clamp(this.x, this.size, VIRTUAL_WIDTH - this.size);
+            this.y = clamp(this.y, this.size, VIRTUAL_HEIGHT + 50);
+
+            if (this.type !== 'boss' && this.y > VIRTUAL_HEIGHT + 50) {
+                this.hp = 0;
+            }
+
+            // Firing
+            if (player && this.fireCooldown <= 0) {
+                const px = player.x;
+                const py = player.y;
+                const dx = px - this.x;
+                const dy = py - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 300 || this.type === 'boss') {
+                    const angle = Math.atan2(dy, dx);
+                    bullets.push({
+                        x: this.x + Math.cos(angle) * this.size,
+                        y: this.y + Math.sin(angle) * this.size,
+                        vx: Math.cos(angle) * 150,
+                        vy: Math.sin(angle) * 150,
+                        life: 3,
+                        type: 'enemy',
+                        damage: 10,
+                        color: '#f00',
+                        size: 5,
+                    });
+                    if (this.type === 'shooter' || this.type === 'boss') {
+                        bullets.push({
+                            x: this.x + Math.cos(angle - 0.3) * this.size,
+                            y: this.y + Math.sin(angle - 0.3) * this.size,
+                            vx: Math.cos(angle - 0.3) * 150,
+                            vy: Math.sin(angle - 0.3) * 150,
+                            life: 3,
+                            type: 'enemy',
+                            damage: 10,
+                            color: '#f00',
+                            size: 5,
+                        });
+                        bullets.push({
+                            x: this.x + Math.cos(angle + 0.3) * this.size,
+                            y: this.y + Math.sin(angle + 0.3) * this.size,
+                            vx: Math.cos(angle + 0.3) * 150,
+                            vy: Math.sin(angle + 0.3) * 150,
+                            life: 3,
+                            type: 'enemy',
+                            damage: 10,
+                            color: '#f00',
+                            size: 5,
+                        });
+                    }
+                    this.fireCooldown = 1 / this.fireRate;
+                }
+            }
+        }
+
+        draw(ctx) {
+            try {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                const baseColor = this.flashTime > 0 ? '#ffffff' : this.color;
+
+                if (this.type === 'drone') {
+                    const grad = ctx.createLinearGradient(-6, -4, 6, 6);
+                    grad.addColorStop(0, this.accentColor);
+                    grad.addColorStop(1, colorAlpha(this.color, 0.5));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(-8, 6);
+                    ctx.lineTo(0, 4);
+                    ctx.lineTo(8, 6);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = colorAlpha(this.accentColor, 0.8);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                } else if (this.type === 'scout') {
+                    const grad = ctx.createLinearGradient(-6, -6, 6, 6);
+                    grad.addColorStop(0, this.accentColor);
+                    grad.addColorStop(1, colorAlpha(this.color, 0.4));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(8, 0);
+                    ctx.lineTo(0, 8);
+                    ctx.lineTo(-8, 0);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.6);
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 12, this.angle, this.angle + Math.PI / 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = colorAlpha('#ffff00', 0.9);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                } else if (this.type === 'tank') {
+                    ctx.fillStyle = colorAlpha(this.color, 0.7);
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const ang = (i / 6) * Math.PI * 2;
+                        const px = Math.cos(ang) * 10;
+                        const py = Math.sin(ang) * 9;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.strokeStyle = this.accentColor;
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i < 6; i++) {
+                        const ang = (i / 6) * Math.PI * 2;
+                        const px = Math.cos(ang) * 8;
+                        const py = Math.sin(ang) * 7;
+                        ctx.beginPath();
+                        ctx.arc(px, py, 2, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    ctx.fillStyle = colorAlpha(this.accentColor, 0.8);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                } else if (this.type === 'shooter') {
+                    const grad = ctx.createLinearGradient(-8, -6, 8, 6);
+                    grad.addColorStop(0, this.accentColor);
+                    grad.addColorStop(1, colorAlpha(this.color, 0.5));
+                    ctx.fillStyle = grad;
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(-10, 0);
+                    ctx.lineTo(-5, 8);
+                    ctx.lineTo(0, 6);
+                    ctx.lineTo(5, 8);
+                    ctx.lineTo(10, 0);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = colorAlpha(this.accentColor, 0.9);
+                    ctx.beginPath();
+                    ctx.arc(-4, -2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(4, -2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                } else if (this.type === 'bomber') {
+                    const pulse = 0.7 + Math.sin(Date.now() * 0.008) * 0.3;
+                    const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, Math.max(0.1, 10 * pulse));
+                    grad.addColorStop(0, colorAlpha(this.accentColor, 0.9));
+                    grad.addColorStop(0.7, colorAlpha(this.color, 0.5));
+                    grad.addColorStop(1, colorAlpha(this.color, 0));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.size * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const ring = Math.sin(this.time * 5) * 0.3 + 0.7;
+                    ctx.strokeStyle = colorAlpha(this.color, 0.6);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.size * ring, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha(this.accentColor, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                } else if (this.type === 'boss') {
+                    // Boss with rotating energy arms
+                    ctx.fillStyle = this.color;
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i / 6) * Math.PI * 2 + this.time * 2;
+                        const px = Math.cos(angle) * 30;
+                        const py = Math.sin(angle) * 30;
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(px, py);
+                        ctx.lineWidth = 3;
+                        ctx.strokeStyle = colorAlpha(this.color, 0.7);
+                        ctx.stroke();
+                    }
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const pulse = Math.sin(this.time * 3) * 0.3 + 0.7;
+                    ctx.strokeStyle = colorAlpha('#0ff', 0.8);
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 15 * pulse, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Glow aura
+                    ctx.strokeStyle = colorAlpha('#0ff', 0.2);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 45, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            } catch (e) {
+                console.error('Enemy draw error:', e);
+            }
+        }
+    }
+
+    // ============================================================================
+    // EFFECTS
+    // ============================================================================
+
+    function createExplosion(x, y, size = 1, color = '#ff6600') {
+        explosions.push({
+            x, y, size, color,
+            rings: [
+                { radius: 0, maxRadius: 20 * size, life: 0.3, color: colorAlpha(color, 1) },
+                { radius: 0, maxRadius: 35 * size, life: 0.4, color: colorAlpha(color, 0.6) },
+                { radius: 0, maxRadius: 50 * size, life: 0.5, color: colorAlpha(color, 0.3) },
+            ],
+        });
+    }
+
+    function createPickup(x, y, type) {
+        pickups.push({
+            x, y, type,
+            life: 5,
+            collected: false,
+            angle: 0,
+        });
+    }
+
+    function createScorePopup(x, y, text) {
+        scorePopups.push({
+            x, y, text,
+            life: 1,
+            scale: 1,
+        });
+    }
+
+    // ============================================================================
+    // WAVE GENERATION
+    // ============================================================================
+
+    function generateWave(wave) {
+        const enemies = [];
+        const waveEnemies = [
+            { type: 'drone', count: 3 + wave },
+            { type: 'scout', count: 2 + Math.floor(wave / 2) },
+        ];
+
+        if (wave > 3) waveEnemies.push({ type: 'tank', count: 1 + Math.floor(wave / 3) });
+        if (wave > 5) waveEnemies.push({ type: 'shooter', count: 1 + Math.floor(wave / 4) });
+        if (wave > 7) waveEnemies.push({ type: 'bomber', count: 1 + Math.floor(wave / 5) });
+        if (wave > 10) {
+            waveEnemies.push({ type: 'boss', count: 1 });
+        }
+
+        let spawnX = 0;
+        for (const w of waveEnemies) {
+            for (let i = 0; i < w.count; i++) {
+                spawnX = 50 + Math.random() * (VIRTUAL_WIDTH - 100);
+                enemies.push(new Enemy(w.type, spawnX, -30 - i * 40, wave));
+            }
+        }
+        return enemies;
+    }
+
+    // ============================================================================
+    // BACKGROUND
+    // ============================================================================
+
+    function initBackground() {
+        stars = [];
+        nebulaClouds = [];
+        dustParticles = [];
+
+        // Initialize stars (parallax layers)
+        for (let layer = 0; layer < 3; layer++) {
+            const count = 80 + layer * 40;
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * VIRTUAL_WIDTH,
+                    y: Math.random() * VIRTUAL_HEIGHT,
+                    size: Math.random() * (2 - layer * 0.3) + 0.3,
+                    brightness: Math.random() * 0.4 + 0.3 + layer * 0.15,
+                    layer: layer,
+                });
+            }
+        }
+
+        // Nebula clouds
+        nebulaClouds.push({
+            x: VIRTUAL_WIDTH * 0.3,
+            y: VIRTUAL_HEIGHT * 0.2,
+            radius: 150,
+            color: '#ff006e',
+        });
+        nebulaClouds.push({
+            x: VIRTUAL_WIDTH * 0.7,
+            y: VIRTUAL_HEIGHT * 0.6,
+            radius: 200,
+            color: '#0084ff',
+        });
+        nebulaClouds.push({
+            x: VIRTUAL_WIDTH * 0.5,
+            y: VIRTUAL_HEIGHT * 0.8,
+            radius: 180,
+            color: '#00ff88',
+        });
+
+        // Dust particles
+        for (let i = 0; i < 300; i++) {
+            dustParticles.push({
+                x: Math.random() * VIRTUAL_WIDTH,
+                y: Math.random() * VIRTUAL_HEIGHT,
+                vx: (Math.random() - 0.5) * 5,
+                vy: (Math.random() - 0.5) * 5,
+                size: Math.random() * 0.3 + 0.05,
+                brightness: Math.random() * 0.2 + 0.1,
+            });
+        }
+    }
+
+    function drawBackground() {
+        try {
+            // Clear background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+
+            // Update and draw dust
+            for (let d of dustParticles) {
+                d.x += d.vx;
+                d.y += d.vy;
+                if (d.x < 0) d.x = VIRTUAL_WIDTH;
+                if (d.x > VIRTUAL_WIDTH) d.x = 0;
+                if (d.y < 0) d.y = VIRTUAL_HEIGHT;
+                if (d.y > VIRTUAL_HEIGHT) d.y = 0;
+
+                ctx.fillStyle = colorAlpha('#fff', d.brightness);
+                ctx.fillRect(d.x, d.y, d.size, d.size);
+            }
+
+            // Draw parallax stars
+            const time = Date.now() * 0.0001;
+            for (let star of stars) {
+                const speed = (star.layer + 1) * 0.02;
+                const scrollX = (time * speed) % VIRTUAL_WIDTH;
+                const displayX = (star.x + scrollX * 10) % VIRTUAL_WIDTH;
+
+                ctx.fillStyle = colorAlpha('#fff', star.brightness);
+                ctx.globalAlpha = star.brightness;
+                ctx.fillRect(displayX, star.y, star.size, star.size);
+                ctx.globalAlpha = 1;
+            }
+
+            // Draw nebula clouds
+            for (let neb of nebulaClouds) {
+                const grad = ctx.createRadialGradient(neb.x, neb.y, 10, neb.x, neb.y, Math.max(0.1, neb.radius));
+                grad.addColorStop(0, colorAlpha(neb.color, 0.2));
+                grad.addColorStop(1, colorAlpha(neb.color, 0));
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+            }
+
+            // Vignette
+            const vigGrad = ctx.createRadialGradient(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, 0, VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, Math.max(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
+            vigGrad.addColorStop(0, colorAlpha('#000', 0));
+            vigGrad.addColorStop(1, colorAlpha('#000', 0.3));
+            ctx.fillStyle = vigGrad;
+            ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+
+        } catch (e) {
+            console.error('Background draw error:', e);
+        }
+    }
+
+    // ============================================================================
+    // BULLETS & DRAWING
+    // ============================================================================
+
+    function drawBullets() {
+        for (let b of bullets) {
+            try {
+                ctx.save();
+                ctx.translate(b.x, b.y);
+
+                const size = b.size || 5;
+
+                // Glow halo
+                ctx.fillStyle = colorAlpha(b.color, 0.15);
+                ctx.beginPath();
+                ctx.arc(0, 0, size * 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Main bullet
+                if (b.type === 'laser') {
+                    ctx.strokeStyle = b.color;
+                    ctx.lineWidth = b.width || 6;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -20);
+                    ctx.lineTo(0, 20);
+                    ctx.stroke();
+
+                    // Laser glow
+                    ctx.strokeStyle = colorAlpha(b.color, 0.4);
+                    ctx.lineWidth = 12;
+                    ctx.stroke();
+                } else if (b.type === 'missile') {
+                    const grad = ctx.createLinearGradient(0, -size, 0, size);
+                    grad.addColorStop(0, b.color);
+                    grad.addColorStop(1, colorAlpha(b.color, 0.3));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -size * 2);
+                    ctx.lineTo(-size, size);
+                    ctx.lineTo(0, size * 1.5);
+                    ctx.lineTo(size, size);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Missile glow
+                    ctx.strokeStyle = colorAlpha(b.color, 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    // Blaster
+                    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(0.1, size));
+                    grad.addColorStop(0, colorAlpha(b.color, 0.9));
+                    grad.addColorStop(1, colorAlpha(b.color, 0.3));
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Bright center
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            } catch (e) {
+                console.error('Bullet draw error:', e);
+            }
+        }
+    }
+
+    function drawExplosions() {
+        for (let ex of explosions) {
+            try {
+                for (let ring of ex.rings) {
+                    if (ring.radius > 0) {
+                        ctx.strokeStyle = ring.color;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(ex.x, ex.y, ring.radius, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                }
+            } catch (e) {
+                console.error('Explosion draw error:', e);
+            }
+        }
+    }
+
+    function drawParticles() {
+        for (let p of particles) {
+            try {
+                ctx.fillStyle = colorAlpha(p.color, p.life);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            } catch (e) {
+                console.error('Particle draw error:', e);
+            }
+        }
+    }
+
+    function drawPickups() {
+        for (let p of pickups) {
+            try {
+                ctx.save();
+                ctx.translate(p.x, p.y + Math.sin(Date.now() * 0.003) * 3);
+                ctx.rotate(p.angle);
+
+                if (p.type === 'gold') {
+                    ctx.fillStyle = '#ff0';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -6);
+                    ctx.lineTo(6, -2);
+                    ctx.lineTo(6, 2);
+                    ctx.lineTo(0, 6);
+                    ctx.lineTo(-6, 2);
+                    ctx.lineTo(-6, -2);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha('#ff0', 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else if (p.type === 'health') {
+                    ctx.fillStyle = '#0f0';
+                    ctx.fillRect(-4, -4, 8, 8);
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(-2, -1, 4, 2);
+                    ctx.fillRect(-1, -2, 2, 4);
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha('#0f0', 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (p.type === 'xp') {
+                    ctx.fillStyle = '#0ff';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -6);
+                    ctx.lineTo(4, 2);
+                    ctx.lineTo(2, 2);
+                    ctx.lineTo(2, 6);
+                    ctx.lineTo(-2, 6);
+                    ctx.lineTo(-2, 2);
+                    ctx.lineTo(-4, 2);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Glow
+                    ctx.strokeStyle = colorAlpha('#0ff', 0.3);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            } catch (e) {
+                console.error('Pickup draw error:', e);
+            }
+        }
+    }
+
+    function drawScorePopups() {
+        for (let sp of scorePopups) {
+            try {
+                ctx.save();
+                ctx.globalAlpha = sp.scale;
+                ctx.font = 'bold 16px system-ui, -apple-system, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ff0';
+                ctx.fillText(sp.text, sp.x, sp.y);
+                ctx.restore();
+            } catch (e) {
+                console.error('Score popup draw error:', e);
+            }
+        }
+    }
+
+    // ============================================================================
+    // UI DRAWING
+    // ============================================================================
+
+    function drawUI() {
+        try {
+            if (gameState.mode === 'playing' && player) {
+                // Health bar with gradient
+                const barWidth = 100;
+                const barHeight = 8;
+                const barX = 10;
+                const barY = 10;
+
+                ctx.fillStyle = '#333';
+                ctx.fillRect(barX, barY, barWidth, barHeight);
+
+                const hpPercent = Math.max(0, player.hp / player.maxHp);
+                const grad = ctx.createLinearGradient(barX, barY, barX + barWidth, barY);
+                grad.addColorStop(0, hpPercent > 0.5 ? '#00ff00' : '#ff6600');
+                grad.addColorStop(1, hpPercent > 0.5 ? '#00aa00' : '#ff0000');
+                ctx.fillStyle = grad;
+                ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
+
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+                // Score
+                ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'right';
+                ctx.fillText(`Score: ${Math.floor(gameState.score)}`, VIRTUAL_WIDTH - 10, 20);
+
+                // Wave
+                ctx.fillText(`Wave: ${gameState.wave}`, VIRTUAL_WIDTH - 10, 40);
+
+                // Combo
+                if (gameState.combo > 0) {
+                    ctx.fillStyle = '#ff0';
+                    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`${gameState.combo}x COMBO!`, VIRTUAL_WIDTH / 2, 40);
+                }
+
+                // Boss HP bar
+                const boss = enemies.find(e => e.type === 'boss');
+                if (boss) {
+                    const bossBarWidth = 200;
+                    const bossBarHeight = 10;
+                    const bossBarX = VIRTUAL_WIDTH / 2 - bossBarWidth / 2;
+                    const bossBarY = 20;
+
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(bossBarX, bossBarY, bossBarWidth, bossBarHeight);
+
+                    const bossHpPercent = Math.max(0, boss.hp / boss.maxHp);
+                    const bossGrad = ctx.createLinearGradient(bossBarX, bossBarY, bossBarX + bossBarWidth, bossBarY);
+                    bossGrad.addColorStop(0, '#f00');
+                    bossGrad.addColorStop(1, '#ff6600');
+                    ctx.fillStyle = bossGrad;
+                    ctx.fillRect(bossBarX, bossBarY, bossBarWidth * bossHpPercent, bossBarHeight);
+
+                    ctx.strokeStyle = '#0ff';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(bossBarX, bossBarY, bossBarWidth, bossBarHeight);
+
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`BOSS: ${Math.ceil(boss.hp)}/${Math.ceil(boss.maxHp)}`, VIRTUAL_WIDTH / 2, bossBarY + 22);
+                }
+
+                // Message toast
+                if (gameState.messageTimer > 0) {
+                    ctx.globalAlpha = Math.min(1, gameState.messageTimer / 60);
+                    ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
+                    ctx.fillStyle = '#0ff';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(gameState.messageText, VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2);
+                    ctx.globalAlpha = 1;
+                }
+            }
+        } catch (e) {
+            console.error('UI draw error:', e);
+        }
+    }
+
+    function drawMenu() {
+        try {
+            // Title with glow
+            ctx.save();
+            ctx.shadowColor = '#0ff';
+            ctx.shadowBlur = 20;
+            ctx.font = 'bold 40px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#0ff';
+            ctx.textAlign = 'center';
+            ctx.fillText('NOVA BREACH', VIRTUAL_WIDTH / 2, 100);
+            ctx.restore();
+
+            ctx.font = '14px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#888';
+            ctx.textAlign = 'center';
+            ctx.fillText(`High Score: ${window.highScore || 0}`, VIRTUAL_WIDTH / 2, 140);
+
+            const buttons = [
+                { label: 'PLAY', y: 360 },
+                { label: 'DAILY', y: 420 },
+                { label: 'SHOP', y: 480 },
+                { label: 'STATS', y: 540 },
+            ];
+
+            buttons.forEach((btn, i) => {
+                const isHovered = false;
+                ctx.fillStyle = isHovered ? '#0ff' : '#00aa00';
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 2;
+                ctx.fillRect(VIRTUAL_WIDTH / 2 - 80, btn.y - 20, 160, 40);
+                ctx.strokeRect(VIRTUAL_WIDTH / 2 - 80, btn.y - 20, 160, 40);
+
+                ctx.font = 'bold 16px system-ui, -apple-system, sans-serif';
+                ctx.fillStyle = '#000';
+                ctx.textAlign = 'center';
+                ctx.fillText(btn.label, VIRTUAL_WIDTH / 2, btn.y + 8);
+            });
+
+            // Gold counter
+            ctx.font = '12px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#ff0';
+            ctx.textAlign = 'right';
+            ctx.fillText(`Gold: ${gameState.gold}`, VIRTUAL_WIDTH - 10, VIRTUAL_HEIGHT - 10);
+        } catch (e) {
+            console.error('Menu draw error:', e);
+        }
+    }
+
+    function drawUpgrade() {
+        try {
+            ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#0ff';
+            ctx.textAlign = 'center';
+            ctx.fillText('CHOOSE AN UPGRADE', VIRTUAL_WIDTH / 2, 80);
+
+            for (let i = 0; i < gameState.upgradeChoices.length; i++) {
+                const upgrade = gameState.upgradeChoices[i];
+                const y = 200 + i * 120;
+
+                ctx.fillStyle = gameState.selectedUpgradeIdx === i ? '#0ff' : '#00aa00';
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 2;
+                ctx.fillRect(VIRTUAL_WIDTH / 2 - 100, y - 40, 200, 80);
+                ctx.strokeRect(VIRTUAL_WIDTH / 2 - 100, y - 40, 200, 80);
+
+                ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
+                ctx.fillStyle = '#000';
+                ctx.textAlign = 'center';
+                ctx.fillText(upgrade.toUpperCase(), VIRTUAL_WIDTH / 2, y + 10);
+            }
+        } catch (e) {
+            console.error('Upgrade draw error:', e);
+        }
+    }
+
+    function drawDead() {
+        try {
+            ctx.font = 'bold 40px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#f00';
+            ctx.textAlign = 'center';
+            ctx.fillText('GAME OVER', VIRTUAL_WIDTH / 2, 150);
+
+            ctx.font = '16px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`Wave: ${gameState.wave}`, VIRTUAL_WIDTH / 2, 210);
+            ctx.fillText(`Score: ${Math.floor(gameState.score)}`, VIRTUAL_WIDTH / 2, 240);
+            ctx.fillText(`Kills: ${gameState.kills}`, VIRTUAL_WIDTH / 2, 270);
+
+            ctx.fillStyle = '#00aa00';
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.fillRect(VIRTUAL_WIDTH / 2 - 80, 380, 160, 40);
+            ctx.strokeRect(VIRTUAL_WIDTH / 2 - 80, 380, 160, 40);
+
+            ctx.font = 'bold 16px system-ui, -apple-system, sans-serif';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.fillText('MENU', VIRTUAL_WIDTH / 2, 408);
+        } catch (e) {
+            console.error('Dead screen draw error:', e);
+        }
+    }
+
+    // ============================================================================
+    // GAME LOGIC
+    // ============================================================================
+
+    function update() {
+        if (gameState.mode !== 'playing' || !player) return;
+
+        player.update(keys, touchX, touchY, gameState);
+        player.fire();
+
+        // Update bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.life -= dt;
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+
+            // Missile homing
+            if (b.type === 'missile' && !b.target) {
+                let closest = null;
+                let closestDist = 200;
+                for (const e of enemies) {
+                    const d = distance(b.x, b.y, e.x, e.y);
+                    if (d < closestDist) {
+                        closestDist = d;
+                        closest = e;
+                    }
+                }
+                b.target = closest;
+            }
+            if (b.type === 'missile' && b.target && b.target.hp > 0) {
+                const dx = b.target.x - b.x;
+                const dy = b.target.y - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0) {
+                    b.vx += (dx / dist) * b.speed * 0.5 * dt;
+                    b.vy += (dy / dist) * b.speed * 0.5 * dt;
+                    const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+                    b.vx = (b.vx / speed) * b.speed;
+                    b.vy = (b.vy / speed) * b.speed;
+                }
+            }
+
+            // Remove off-screen
+            if (b.life <= 0 || b.y < -50 || b.y > VIRTUAL_HEIGHT + 50 || b.x < -50 || b.x > VIRTUAL_WIDTH + 50) {
+                bullets.splice(i, 1);
+                continue;
+            }
+
+            // Collision with enemies (player bullets only)
+            if (b.type === 'enemy') continue;
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const e = enemies[j];
+                if (distance(b.x, b.y, e.x, e.y) < (b.size || 5) + e.size) {
+                    const damage = b.damage || 1;
+                    e.hp -= damage;
+                    e.flashTime = 0.1;
+                    player.damageDealt += damage;
+                    particles.push({
+                        x: b.x, y: b.y,
+                        vx: (Math.random() - 0.5) * 200,
+                        vy: (Math.random() - 0.5) * 200,
+                        life: 0.2,
+                        color: '#0f0',
+                        size: 2,
+                    });
+                    if (b.piercing > 0) {
+                        b.piercing--;
+                    } else {
+                        bullets.splice(i, 1);
+                    }
+                    if (e.hp <= 0) {
+                        createExplosion(e.x, e.y, 1, e.color);
+                        gameState.score += e.score * (1 + gameState.combo * 0.2);
+                        gameState.kills++;
+                        gameState.totalKills++;
+                        if (gameState.kills === 1) declareAchievement('first_blood');
+                        gameState.combo++;
+                        gameState.comboTimer = 2.5;
+                        createPickup(e.x, e.y, Math.random() > 0.7 ? 'gold' : (Math.random() > 0.5 ? 'xp' : 'health'));
+                        if (gameState.combo >= 10) declareAchievement('combo_king');
+                        if (gameState.combo >= 50) declareAchievement('unstoppable');
+                        playSound('kill', 300 + Math.random() * 100, 0.15);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Update enemies
+        const waveTime = (gameState.wave * 10 + gameState.kills) * 0.1;
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            enemies[i].update(gameState, waveTime);
+            if (enemies[i].hp <= 0) {
+                enemies.splice(i, 1);
+            }
+        }
+
+        if (enemies.length === 0 && gameState.numEnemies > 0) {
+            advanceWave();
+        }
+
+        // Collision with enemy bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            if (b.type === 'enemy' && player) {
+                if (distance(b.x, b.y, player.x, player.y) < 8) {
+                    player.takeDamage(b.damage);
+                    bullets.splice(i, 1);
+                }
+            }
+        }
+
+        // Update pickups
+        for (let i = pickups.length - 1; i >= 0; i--) {
+            const p = pickups[i];
+            p.life -= dt;
+            p.angle += 0.05;
+            if (!p.collected && player && distance(p.x, p.y, player.x, player.y) < player.magnet * (1 + player.upgrades.magnet * 0.1)) {
+                p.collected = true;
+                if (p.type === 'gold') {
+                    gameState.gold += 10;
+                    gameState.score += 5;
+                } else if (p.type === 'xp') {
+                    gameState.xp += 25;
+                    player.pickupsCollected++;
+                } else if (p.type === 'health') {
+                    player.hp = Math.min(player.maxHp, player.hp + 30);
+                    player.pickupsCollected++;
+                }
+                createScorePopup(p.x, p.y, p.type === 'gold' ? '+10' : '+25');
+                playSound('pickup', 800, 0.05);
+            }
+            if (p.life <= 0) {
+                pickups.splice(i, 1);
+            }
+        }
+
+        // Update combo timer
+        gameState.comboTimer -= dt;
+        if (gameState.comboTimer <= 0) {
+            gameState.combo = 0;
+        }
+
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].life -= dt;
+            particles[i].x += particles[i].vx * dt;
+            particles[i].y += particles[i].vy * dt;
+            particles[i].vy += 100 * dt;
+            if (particles[i].life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+
+        // Update explosions
+        for (let i = explosions.length - 1; i >= 0; i--) {
+            const ex = explosions[i];
+            for (let ring of ex.rings) {
+                ring.radius = Math.min(ring.radius + ring.maxRadius * 3 * dt, ring.maxRadius);
+            }
+            if (ex.rings.every(r => r.radius >= r.maxRadius)) {
+                explosions.splice(i, 1);
+            }
+        }
+
+        // Update score popups
+        for (let i = scorePopups.length - 1; i >= 0; i--) {
+            scorePopups[i].life -= dt;
+            scorePopups[i].y -= 50 * dt;
+            scorePopups[i].scale = scorePopups[i].life;
+            if (scorePopups[i].life <= 0) {
+                scorePopups.splice(i, 1);
+            }
+        }
+
+        // Game over check
+        if (player.hp <= 0) {
+            gameOver();
+        }
+    }
+
+    function advanceWave() {
+        gameState.wave++;
+        gameState.comboTimer = 0;
+        gameState.combo = 0;
+        gameState.upgradeChoices = [
+            'fireRate', 'damage', 'maxHp',
+            'speed', 'magnet', 'pierce',
+            'xpRange', 'shieldRegen'
+        ].sort(() => Math.random() - 0.5).slice(0, 3);
+        gameState.mode = 'upgrade';
+        gameState.messageText = `WAVE ${gameState.wave} COMPLETE`;
+        gameState.messageTimer = 120;
+        showToast(`Wave ${gameState.wave} - Choose an upgrade!`);
+    }
+
+    function gameOver() {
+        gameState.mode = 'dead';
+        gameState.deaths++;
+        const highScore = window.highScore || 0;
+        if (gameState.score > highScore) {
+            window.highScore = gameState.score;
+            savePersistentData();
+        }
+        savePersistentData();
+        gameState.messageText = 'GAME OVER';
+        gameState.messageTimer = 120;
+    }
+
+    function selectUpgrade(idx) {
+        if (idx < 0 || idx >= gameState.upgradeChoices.length) return;
+        const upgrade = gameState.upgradeChoices[idx];
+        const levels = [
+            { key: 'maxHp', val: 20, stat: 'Max HP' },
+            { key: 'fireRate', val: 1, stat: 'Fire Rate' },
+            { key: 'speed', val: 1, stat: 'Speed' },
+            { key: 'damage', val: 1, stat: 'Damage' },
+            { key: 'magnet', val: 30, stat: 'Magnet' },
+            { key: 'pierce', val: 1, stat: 'Piercing' },
+            { key: 'xpRange', val: 30, stat: 'XP Range' },
+            { key: 'shieldRegen', val: 1, stat: 'Shield Regen' },
+        ];
+        const level = levels.find(l => l.key === upgrade);
+        if (level && player) {
+            if (level.key === 'maxHp') {
+                player.maxHp += 20;
+                player.hp = player.maxHp;
+            } else if (level.key === 'rearGun') {
+                player.upgrades.rearGun = true;
+            } else if (level.key === 'sideGuns') {
+                player.upgrades.sideGuns = true;
+            } else {
+                player.upgrades[level.key] += level.val;
+            }
+            showToast(`+${level.stat}`);
+        }
+        gameState.mode = 'playing';
+        gameState.upgradeChoices = [];
+    }
+
+    function startGame(ship, isDaily = false) {
+        gameState.mode = 'playing';
+        gameState.wave = 1;
+        gameState.score = 0;
+        gameState.combo = 0;
+        gameState.comboTimer = 0;
+        gameState.kills = 0;
+        gameState.xp = 0;
+        gameState.xpMax = 100;
+        gameState.screenShake = 0;
+        gameState.screenFlash = 0;
+        gameState.selectedShip = ship;
+        gameState.upgradeChoices = [];
+        gameState.selectedUpgradeIdx = 0;
+        gameState.isDailyMode = isDaily;
+
+        player = new Player(ship);
+        enemies = generateWave(gameState.wave);
+        gameState.numEnemies = enemies.length;
+        bullets = [];
+        particles = [];
+        pickups = [];
+        explosions = [];
+        scorePopups = [];
+    }
+
+    // ============================================================================
+    // INPUT HANDLING
+    // ============================================================================
+
+    document.addEventListener('keydown', e => {
+        keys[e.key] = true;
+        if (e.key === ' ') e.preventDefault();
+        if (e.key === 'Enter' && gameState.mode === 'menu') {
+            startGame('viper');
+        }
+    });
+
+    document.addEventListener('keyup', e => {
+        keys[e.key] = false;
+    });
+
+    canvas.addEventListener('touchstart', e => {
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        touchX = (touch.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
+        touchY = (touch.clientY - rect.top) / rect.height * VIRTUAL_HEIGHT;
+    });
+
+    canvas.addEventListener('touchmove', e => {
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        touchX = (touch.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
+        touchY = (touch.clientY - rect.top) / rect.height * VIRTUAL_HEIGHT;
+    });
+
+    window.addEventListener('touchend', e => { touchX = null; touchY = null; }, false);
+
+    canvas.addEventListener('click', e => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
+        const y = (e.clientY - rect.top) / rect.height * VIRTUAL_HEIGHT;
+        handleClickOrTap(x, y);
+    });
+
+    canvas.addEventListener('touchend', e => {
+        if (e.changedTouches.length > 0) {
+            const touch = e.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = (touch.clientX - rect.left) / rect.width * VIRTUAL_WIDTH;
+            const y = (touch.clientY - rect.top) / rect.height * VIRTUAL_HEIGHT;
+            handleClickOrTap(x, y);
+        }
+    });
+
+    function handleClickOrTap(x, y) {
+        if (gameState.mode === 'menu') {
+            const buttons = [
+                { label: 'PLAY', y: 360 },
+                { label: 'DAILY', y: 420 },
+                { label: 'SHOP', y: 480 },
+                { label: 'STATS', y: 540 },
+            ];
+            buttons.forEach((btn, i) => {
+                if (Math.abs(y - btn.y) < 22 && Math.abs(x - VIRTUAL_WIDTH / 2) < 90) {
+                    if (btn.label === 'PLAY') {
+                        startGame('viper');
+                    } else if (btn.label === 'DAILY') {
+                        startGame('viper', true);
+                    }
+                }
+            });
+        } else if (gameState.mode === 'upgrade') {
+            for (let i = 0; i < 3; i++) {
+                const btnX = VIRTUAL_WIDTH / 2;
+                const btnY = 200 + i * 120;
+                if (Math.abs(y - btnY) < 50 && Math.abs(x - btnX) < 100) {
+                    selectUpgrade(i);
+                }
+            }
+        } else if (gameState.mode === 'dead') {
+            if (Math.abs(y - 408) < 22 && Math.abs(x - VIRTUAL_WIDTH / 2) < 90) {
+                gameState.mode = 'menu';
+            }
+        }
+    }
+
+    // ============================================================================
+    // MAIN LOOP
+    // ============================================================================
+
+    function draw() {
+        try {
+            drawBackground();
+
+            if (gameState.mode === 'playing' && player) {
+                for (const e of enemies) {
+                    e.draw(ctx);
+                }
+
+                player.draw(ctx);
+
+                drawBullets();
+                drawExplosions();
+                drawParticles();
+                drawPickups();
+                drawScorePopups();
+
+                drawUI();
+            } else if (gameState.mode === 'menu') {
+                drawMenu();
+            } else if (gameState.mode === 'upgrade') {
+                drawUpgrade();
+            } else if (gameState.mode === 'dead') {
+                drawDead();
+            }
+
+            // Screen shake
+            if (gameState.screenShake > 0) {
+                gameState.screenShake -= dt;
+                ctx.save();
+                const shake = Math.random() * gameState.screenShake * 4;
+                ctx.translate(shake - gameState.screenShake * 2, shake - gameState.screenShake * 2);
+            }
+
+            // Screen flash
+            if (gameState.screenFlash > 0) {
+                gameState.screenFlash -= dt;
+                ctx.fillStyle = colorAlpha(gameState.screenFlashColor, gameState.screenFlash);
+                ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+            }
+
+        } catch (e) {
+            console.error('Draw error:', e);
+        }
+    }
+
+    let lastTime = Date.now();
+    function gameLoop() {
+        const now = Date.now();
+        const delta = now - lastTime;
+        lastTime = now;
+
+        update();
+        draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
+    initAudio();
+    loadPersistentData();
+    initBackground();
+
+    gameLoop();
 })();
-</script>
-
+    </script>
 </body>
 </html>
