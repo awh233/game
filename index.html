@@ -75,7 +75,14 @@
     const FIXED_DT = 1000 / 60;
     const dt = FIXED_DT / 1000;
     const SAVE_KEY = 'void_rift_save';
-    const VERSION = 'v7.0.3';
+    const VERSION = 'v7.1';
+
+    // Array capacity limits to prevent performance degradation
+    const MAX_BULLETS = 150;
+    const MAX_PARTICLES = 200;
+    const MAX_EXPLOSIONS = 20;
+    const MAX_MUZZLE_FLASHES = 10;
+    const MAX_DAMAGE_NUMBERS = 30;
 
     let gameState = {
         mode: 'menu',
@@ -1249,15 +1256,17 @@
                     // Sparkle trail
                     for (let i = 0; i < 2; i++) {
                         const angle = spin + i * Math.PI;
-                        particles.push({
-                            x: this.x + Math.cos(angle) * 8,
-                            y: this.y + Math.sin(angle) * 8,
-                            vx: (Math.random() - 0.5) * 50,
-                            vy: (Math.random() - 0.5) * 50,
-                            life: 0.2,
-                            color: '#ffff00',
-                            size: 1,
-                        });
+                        if (particles.length < MAX_PARTICLES) {
+                            particles.push({
+                                x: this.x + Math.cos(angle) * 8,
+                                y: this.y + Math.sin(angle) * 8,
+                                vx: (Math.random() - 0.5) * 50,
+                                vy: (Math.random() - 0.5) * 50,
+                                life: 0.2,
+                                color: '#ffff00',
+                                size: 1,
+                            });
+                        }
                     }
 
                 } else if (this.type === 'spiral') {
@@ -1294,15 +1303,17 @@
                         ctx.fill();
 
                         // Trail particles
-                        particles.push({
-                            x: this.x + px,
-                            y: this.y + py,
-                            vx: (Math.random() - 0.5) * 40,
-                            vy: (Math.random() - 0.5) * 40,
-                            life: 0.15,
-                            color: this.color,
-                            size: 1,
-                        });
+                        if (particles.length < MAX_PARTICLES) {
+                            particles.push({
+                                x: this.x + px,
+                                y: this.y + py,
+                                vx: (Math.random() - 0.5) * 40,
+                                vy: (Math.random() - 0.5) * 40,
+                                life: 0.15,
+                                color: this.color,
+                                size: 1,
+                            });
+                        }
                     }
 
                 } else if (this.type === 'formation') {
@@ -1381,15 +1392,17 @@
                         ctx.fill();
 
                         // Particle emission
-                        particles.push({
-                            x: this.x + px,
-                            y: this.y + py,
-                            vx: Math.cos(angle) * 40,
-                            vy: Math.sin(angle) * 40,
-                            life: 0.3,
-                            color: this.color,
-                            size: 1.5,
-                        });
+                        if (particles.length < MAX_PARTICLES) {
+                            particles.push({
+                                x: this.x + px,
+                                y: this.y + py,
+                                vx: Math.cos(angle) * 40,
+                                vy: Math.sin(angle) * 40,
+                                life: 0.3,
+                                color: this.color,
+                                size: 1.5,
+                            });
+                        }
                     }
 
                     // Damage indicator - visual shield segments break off
@@ -1755,6 +1768,13 @@
     // ============================================================================
 
     function drawGame() {
+        // Cap arrays to prevent performance degradation
+        if (bullets.length > MAX_BULLETS) bullets.splice(0, bullets.length - MAX_BULLETS);
+        if (particles.length > MAX_PARTICLES) particles.splice(0, particles.length - MAX_PARTICLES);
+        if (explosions.length > MAX_EXPLOSIONS) explosions.splice(0, explosions.length - MAX_EXPLOSIONS);
+        if (muzzleFlashes.length > MAX_MUZZLE_FLASHES) muzzleFlashes.splice(0, muzzleFlashes.length - MAX_MUZZLE_FLASHES);
+        if (damageNumbers.length > MAX_DAMAGE_NUMBERS) damageNumbers.splice(0, damageNumbers.length - MAX_DAMAGE_NUMBERS);
+
         drawBackground();
 
         ctx.save();
@@ -1877,7 +1897,7 @@
                     ctx.stroke();
 
                     // Trail
-                    if (Math.random() < 0.4) {
+                    if (Math.random() < 0.15) {
                         particles.push({
                             x: bullet.x + (Math.random() - 0.5) * 2,
                             y: bullet.y + (Math.random() - 0.5) * 2,
@@ -1907,7 +1927,7 @@
                     ctx.stroke();
 
                     // Sparkles
-                    if (Math.random() < 0.3) {
+                    if (Math.random() < 0.1) {
                         particles.push({
                             x: bullet.x + (Math.random() - 0.5) * 3,
                             y: bullet.y,
