@@ -75,7 +75,7 @@
     const FIXED_DT = 1000 / 60;
     const dt = FIXED_DT / 1000;
     const SAVE_KEY = 'void_rift_save';
-    const VERSION = 'v7.0';
+    const VERSION = 'v7.0.2';
 
     let gameState = {
         mode: 'menu',
@@ -2288,6 +2288,8 @@
 
     function update() {
         if (gameState.mode === 'menu') return;
+        if (gameState.mode === 'wave_transition') return;
+        if (gameState.mode === 'dead') return;
 
         gameState.timeSurvived += dt;
         gameState.hitStopFrames = Math.max(0, gameState.hitStopFrames - 1);
@@ -2565,25 +2567,29 @@
     }
 
     function gameLoop() {
-        const now = Date.now();
+        try {
+            const now = Date.now();
 
-        update();
+            update();
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        switch (gameState.mode) {
-            case 'menu':
-                drawMenu();
-                break;
-            case 'playing':
-                drawGame();
-                break;
-            case 'wave_transition':
-                drawWaveTransition();
-                break;
-            case 'dead':
-                drawDead();
-                break;
+            switch (gameState.mode) {
+                case 'menu':
+                    drawMenu();
+                    break;
+                case 'playing':
+                    drawGame();
+                    break;
+                case 'wave_transition':
+                    drawWaveTransition();
+                    break;
+                case 'dead':
+                    drawDead();
+                    break;
+            }
+        } catch (e) {
+            console.error('Game loop error:', e);
         }
 
         requestAnimationFrame(gameLoop);
